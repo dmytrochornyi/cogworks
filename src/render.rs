@@ -207,18 +207,20 @@ pub fn sky_at_phase(p: f32) -> Sky {
     // grade mix into shadows and midtones. The ambient multiplies green grass,
     // which would otherwise read olive at golden hour and teal at night; the
     // tint counteracts that without cooling the warm lamp light. rgb is the
-    // tint colour, `a` the strength.
+    // tint colour, `a` the strength. Strengths are ~35% below the first pass so
+    // the grade stays a soft wash instead of a repaint; COMPOSITE scales the
+    // tint further by (1 - light luminance) to keep lamp-lit areas warm.
     const TINT: [(f32, [f32; 4]); 10] = [
-        (0.00, [0.66, 0.42, 0.92, 0.70]), // violet-blue night
-        (0.22, [0.66, 0.42, 0.92, 0.70]), // night
+        (0.00, [0.66, 0.42, 0.92, 0.45]), // violet-blue night
+        (0.22, [0.66, 0.42, 0.92, 0.45]), // night
         (0.30, [1.00, 1.00, 1.00, 0.00]), // morning: no tint
         (0.50, [1.00, 1.00, 1.00, 0.00]), // midday: no tint
-        (0.62, [1.00, 0.72, 0.42, 0.50]), // golden hour: peach-gold
-        (0.68, [1.00, 0.72, 0.42, 0.50]), // hold the peach through golden hour
-        (0.74, [0.86, 0.50, 0.86, 0.75]), // sunset: shift to lavender-pink
-        (0.80, [0.80, 0.45, 0.90, 0.85]), // dusk: lavender-pink
-        (0.88, [0.66, 0.42, 0.92, 0.70]), // night: violet-blue
-        (1.00, [0.66, 0.42, 0.92, 0.70]), // night
+        (0.62, [1.00, 0.72, 0.42, 0.33]), // golden hour: peach-gold
+        (0.68, [1.00, 0.72, 0.42, 0.33]), // hold the peach through golden hour
+        (0.74, [0.86, 0.50, 0.86, 0.49]), // sunset: shift to lavender-pink
+        (0.80, [0.80, 0.45, 0.90, 0.55]), // dusk: lavender-pink
+        (0.88, [0.66, 0.42, 0.92, 0.45]), // night: violet-blue
+        (1.00, [0.66, 0.42, 0.92, 0.45]), // night
     ];
     let t = lerp_keys4(&TINT, p);
     Sky {
@@ -1197,7 +1199,10 @@ fn draw_lights(a: &Assets, world: &World, cam: &Cam, t: f32, glow: f32) {
                 // The lantern's light follows its swing about the hook.
                 let sw = sway(t, lantern_seed(p), 0.06, 3.5);
                 let center = p + LANTERN_HOOK + Vec2::from_angle(FRAC_PI_2 + sw) * LANTERN_DROP;
-                light(a, cam, center, 4.2, rgba(warm, glow * 0.9 * flick));
+                // A generous, clearly visible warm peach pool from golden hour
+                // on: a 0.3 floor once glow begins, rising to full at night.
+                let strength = if glow > 0.0 { (0.3 + glow * 0.7).min(1.0) * flick } else { 0.0 };
+                light(a, cam, center, 4.2, rgba(warm, strength));
             }
             Kind::Smelter if e.active => light(a, cam, px(64.0, 104.0), 2.6, theme::rgba(1.0, 0.5, 0.2, (0.3 + glow * 0.7) * flick)),
             Kind::Generator if e.active => light(a, cam, px(74.0, 61.0), 2.0, theme::rgba(1.0, 0.7, 0.35, 0.15 + glow * 0.5)),
@@ -1336,6 +1341,30 @@ mod tests {
     fn night_is_violet_not_teal() {
         let t = sky_at_phase(0.95).tint;
         assert!(t.b > t.g && t.r >= t.g, "night tint should be violet (not teal), got r={:.3} g={:.3} b={:.3}", t.r, t.g, t.b);
+    }
+
+    #[test]
+    fn golden_hour_keeps_some_green() {
+        let g = theme::grade(theme::color(theme::MEADOW_400), sky_at_phase(0.68).tint);
+        assert!(
+            g.g >= 0.75 * g.r,
+            "golden hour grass went murky: r={:.3} g={:.3} b={:.3}",
+            g.r,
+            g.g,
+            g.b
+        );
+    }
+
+    #[test]
+    fn dusk_does_not_turn_magenta() {
+        let g = theme::grade(theme::color(theme::MEADOW_400), sky_at_phase(0.8).tint);
+        assert!(
+            g.g >= 0.6 * g.r,
+            "dusk grass went magenta: r={:.3} g={:.3} b={:.3}",
+            g.r,
+            g.g,
+            g.b
+        );
     }
 
     #[test]

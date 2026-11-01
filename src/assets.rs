@@ -245,9 +245,12 @@ void main() {
     col = mix(col, col * vec3(1.06, 1.0, 0.88), Params.w);
     col += vec3(0.03, 0.025, 0.06) * (1.0 - luma);
     col = mix(vec3(luma), col, 0.90);
-    // Mood tint, mostly into shadows and midtones so lamp-lit areas stay warm.
+    // Mood tint, mostly into shadows and midtones, and scaled by how dark the
+    // light map is (1 - light luminance) so lamp-lit pools stay warm peach
+    // instead of being pulled toward the lavender-pink tint.
     float tluma = dot(col, vec3(0.299, 0.587, 0.114));
-    col = mix(col, col * Tint.rgb * 1.6 + Tint.rgb * 0.08, Tint.a * (1.0 - tluma * 0.5));
+    float lluma = dot(l, vec3(0.299, 0.587, 0.114));
+    col = mix(col, col * Tint.rgb * 1.6 + Tint.rgb * 0.08, Tint.a * (1.0 - tluma * 0.5) * clamp(1.0 - lluma, 0.0, 1.0));
     vec2 d = uv - 0.5;
     col *= 1.0 - dot(d, d) * Params.z;
     gl_FragColor = vec4(col, 1.0);

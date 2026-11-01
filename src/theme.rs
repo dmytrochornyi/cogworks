@@ -86,18 +86,20 @@ pub fn saturation(hex: u32) -> f32 {
 /// Keeps the minimap's greens in the same light as the ground they represent.
 /// `tint` is the mood tint from `sky_at_phase` (rgb colour, strength in alpha),
 /// mirroring the `Tint` uniform in `COMPOSITE`: applied mostly into shadows and
-/// midtones so lamp-lit areas keep their warmth.
+/// midtones, and scaled by the source pixel's darkness (the light-map proxy for
+/// a flat image) so bright/lit areas keep their warmth instead of going pink.
 pub fn grade(c: Color, tint: Color) -> Color {
     let luma = 0.299 * c.r + 0.587 * c.g + 0.114 * c.b;
     let warm = Color::new(c.r * 1.06, c.g, c.b * 0.88, c.a);
     let mut out = mix(c, warm, 0.35);
-    let lift = (1.0 - luma).clamp(0.0, 1.0);
-    out.r = (out.r + 0.030 * lift).min(1.0);
-    out.g = (out.g + 0.025 * lift).min(1.0);
-    out.b = (out.b + 0.060 * lift).min(1.0);
-    // Mood tint, same maths as COMPOSITE: mix into shadows and midtones.
+    let shadow = (1.0 - luma).clamp(0.0, 1.0);
+    out.r = (out.r + 0.030 * shadow).min(1.0);
+    out.g = (out.g + 0.025 * shadow).min(1.0);
+    out.b = (out.b + 0.060 * shadow).min(1.0);
+    // Mood tint, same maths as COMPOSITE: mix into shadows and midtones, and
+    // scaled by `shadow` (dark areas get the tint, lit areas stay warm).
     let tluma = 0.299 * out.r + 0.587 * out.g + 0.114 * out.b;
-    let amount = tint.a * (1.0 - tluma * 0.5);
+    let amount = tint.a * (1.0 - tluma * 0.5) * shadow;
     let tinted = Color::new(
         out.r * tint.r * 1.6 + tint.r * 0.08,
         out.g * tint.g * 1.6 + tint.g * 0.08,
@@ -222,7 +224,9 @@ pub const LACQUER_500: u32 = 0xc9705f;
 pub const LACQUER_400: u32 = 0xd98b76;
 pub const LACQUER_300: u32 = 0xecb4a4;
 
-// Verdigris teal: roof trim and metal accents.
+// Verdigris teal: roof trim and metal accents. 700 is dark enough to read
+// as text on the cream card background (research unlock labels).
+pub const VERDIGRIS_700: u32 = 0x32655d;
 pub const VERDIGRIS_600: u32 = 0x468c82;
 pub const VERDIGRIS_500: u32 = 0x5fa89d;
 pub const VERDIGRIS_400: u32 = 0x83c2b8;
@@ -312,9 +316,9 @@ pub const STEM_LIGHT: u32 = 0x9fb07f;
 pub const PEBBLE_LIGHT: u32 = 0xd3c4ab;
 pub const PEBBLE_DARK: u32 = 0xa6977f;
 
-pub const ORE_IRON: u32 = 0x6e7886;
-pub const ORE_IRON_FACET: u32 = 0x9aa6b8;
-pub const ORE_IRON_GLINT: u32 = 0xdfe7f0;
+pub const ORE_IRON: u32 = 0xbcc8d6;
+pub const ORE_IRON_FACET: u32 = 0xe4ebf4;
+pub const ORE_IRON_GLINT: u32 = 0xfafcff;
 pub const ORE_COPPER: u32 = 0xc0713f;
 pub const ORE_COPPER_FACET: u32 = 0xefa05e;
 pub const ORE_COPPER_PATINA: u32 = 0x6fa89a;
@@ -526,6 +530,7 @@ mod tests {
         assert!(contrast(TITLE, BG) >= 4.5, "TITLE on BG = {:.2}", contrast(TITLE, BG));
         assert!(contrast(TEXT, BG2) >= 4.5, "TEXT on BG2 = {:.2}", contrast(TEXT, BG2));
         assert!(contrast(KEY, BG) >= 4.5, "KEY on BG = {:.2}", contrast(KEY, BG));
+        assert!(contrast(VERDIGRIS_700, BG2) >= 4.5, "VERDIGRIS_700 on BG2 = {:.2}", contrast(VERDIGRIS_700, BG2));
     }
 
     /// Every item icon must stand out against the slot well, and the slot

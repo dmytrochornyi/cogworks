@@ -211,12 +211,12 @@ fn angular_chunk(cv: &mut Canvas, pts: &[Vec2], body: C, facet: C) {
     }
     let span = (maxy - miny).max(1.0);
     let sdf = move |p: Vec2| poly(p, pts);
-    cv.shadow(sdf, v(2.5, 3.0), 3.0, 0.35);
-    cv.shape(sdf, move |p| mix(lit(body, 1.12), lit(body, 0.66), ((p.y - miny) / span).clamp(0.0, 1.0)), OW);
+    cv.shadow(sdf, v(2.5, 3.0), 3.0, 0.20);
+    cv.shape(sdf, move |p| mix(lit(body, 1.12), lit(body, 0.88), ((p.y - miny) / span).clamp(0.0, 1.0)), OW);
     let a = pts[0];
     let b = pts[1];
     let c = (a + b) * 0.5 + v(0.0, 2.0);
-    cv.fill(move |p| poly(p, &[a, b, c]), |_| with_alpha(facet, 0.6));
+    cv.fill(move |p| poly(p, &[a, b, c]), |_| with_alpha(facet, 0.85));
 }
 
 /// Blue-grey angular chunks with a silver glint on each top facet.
@@ -802,14 +802,17 @@ pub fn gear_overlay(size: usize, teeth: u32, col: C) -> Canvas {
 pub fn lab() -> Canvas {
     let mut cv = Canvas::new(192, 192);
     let (x, y, w, th) = block(&mut cv, 8.0, 12.0, 176.0, 172.0, 22.0, 26.0, COPPER, side_of(COPPER_DARK));
-    // Copper plinth with faint verdigris patina patches.
-    cv.fill(
-        move |p| rbox(p, x, y, w, th, 26.0),
-        move |p| {
-            let n = fbm(p, 26.0, 30);
-            if n > 0.6 { with_alpha(TRIM_DARK, 0.5) } else { with_alpha(INK, 0.0) }
-        },
-    );
+    // Calm copper tile on the plinth top: hairline grout instead of the old
+    // noise patches, so the base reads as smooth plaster rather than glyphs.
+    cv.fill(move |p| rbox(p, x, y, w, th, 26.0), move |p| {
+        let gx = ((p.x - x) / (w / 6.0)).fract();
+        let gy = ((p.y - y) / (th / 4.0)).fract();
+        if gx < 0.04 || gx > 0.96 || gy < 0.04 || gy > 0.96 {
+            with_alpha(COPPER_DARK, 0.30)
+        } else {
+            with_alpha(INK, 0.0)
+        }
+    });
     let c = v(x + w / 2.0, y + th / 2.0);
     // Brass ribs framing the round greenhouse dome.
     for k in 0..8 {
@@ -1530,7 +1533,8 @@ pub fn icon(name: &str) -> Canvas {
 #[cfg(test)]
 mod tests {
     use super::ground_sheet;
-    use crate::paint::C;
+    use super::ore;
+    use crate::paint::{C, Canvas};
 
     /// Mean absolute RGB difference between two same-length pixel strips.
     fn mean_diff(a: &[C], b: &[C]) -> f32 {
@@ -1560,5 +1564,32 @@ mod tests {
                 assert!(mean_diff(&bottom, &top) < 0.04, "vertical seam at tile ({i},{j}) = {:.3}", mean_diff(&bottom, &top));
             }
         }
+    }
+
+    /// Mean perceived luminance of the opaque pixels of a canvas.
+    fn mean_luma(cv: &Canvas) -> f32 {
+        let mut sum = 0.0;
+        let mut n = 0usize;
+        for y in 0..cv.h {
+            for x in 0..cv.w {
+                let c = cv.pixel(x, y);
+                if c[3] > 0.01 {
+                    sum += 0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2];
+                    n += 1;
+                }
+            }
+        }
+        sum / n as f32
+    }
+
+    /// Iron ore must read clearly lighter than coal by value, not just shape.
+    #[test]
+    fn iron_is_lighter_than_coal() {
+        let iron = mean_luma(&ore("iron", 0));
+        let coal = mean_luma(&ore("coal", 0));
+        assert!(
+            iron >= 1.8 * coal,
+            "iron ore ({iron:.3}) must be clearly lighter than coal ({coal:.3})"
+        );
     }
 }

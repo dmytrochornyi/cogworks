@@ -1,9 +1,5 @@
 //! A tiny anti-aliased software painter built on signed distance functions.
 
-// Palette alias module: as sprites get repainted, some old colours legitimately
-// fall out of use here. Keep the module compiling without dead-code noise.
-#![allow(dead_code)]
-
 use macroquad::math::{Vec2, vec2};
 use macroquad::texture::Image;
 
@@ -44,12 +40,7 @@ pub const TERRA: C = hex(theme::TERRA);
 pub const RUST: C = hex(theme::RUST);
 pub const MUSTARD: C = hex(theme::MUSTARD);
 pub const HONEY: C = hex(theme::HONEY);
-pub const SAGE: C = hex(theme::SAGE);
-pub const SAGE_D: C = hex(theme::SAGE_D);
-pub const OLIVE: C = hex(theme::OLIVE);
-pub const TEAL: C = hex(theme::TEAL);
 pub const SKY: C = hex(theme::SKY);
-pub const ROSE: C = hex(theme::ROSE);
 pub const BROWN: C = hex(theme::BROWN);
 pub const BROWN_D: C = hex(theme::BROWN_D);
 pub const STEEL: C = hex(theme::STEEL);

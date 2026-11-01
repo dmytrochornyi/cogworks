@@ -30,6 +30,8 @@ const HONEY: Color = theme::color(theme::HONEY);
 const PEACH: Color = theme::color(theme::TERRA_600);
 const TERRA: Color = theme::color(theme::TERRA);
 const TEAL: Color = theme::color(theme::TEAL);
+// Darker verdigris for research unlock labels, readable on the cream card.
+const VERDIGRIS: Color = theme::color(theme::VERDIGRIS_700);
 const SHADE: Color = theme::color(theme::SHADE);
 
 // ------------------------------------------------------------------ ui camera
@@ -468,9 +470,14 @@ fn slot(a: &Assets, r: Rect, item: Option<Item>, count: Option<u32>, selected: b
     }
     if let Some(n) = count {
         let s = n.to_string();
-        let x = r.right() - text_w(a, &s, TextSize::S) - 4.0;
-        let y = r.bottom() - 22.0;
-        text(a, &s, x, y, TextSize::S, if unavailable { TEXT_DIM } else { TEXT });
+        // A small paper badge at the slot's bottom-right so the count stays
+        // readable over the icon instead of dark ink floating on art.
+        let bw = text_w(a, &s, TextSize::S) + 8.0;
+        let bh = 18.0;
+        let br = Rect::new(r.right() - bw - 2.0, r.bottom() - bh - 2.0, bw, bh);
+        rrect(br, radius::SM, BG);
+        rrect_lines(br, radius::SM, line::HAIR, EDGE);
+        text_in(a, &s, br, TextSize::S, if unavailable { TEXT_DIM } else { TEXT });
     }
     if selected {
         // Small corner tick that survives even when the icon is bright.
@@ -929,7 +936,7 @@ fn research_panel(g: &mut Game) {
             Some(Bonus::DrillSpeed) => "Drills mine 50% faster".to_string(),
             None => tech.recipes.join(", "),
         };
-        text(&a, &unlocks, cr.x + space::L, cr.y + 70.0, TextSize::S, TEAL);
+        text(&a, &unlocks, cr.x + space::L, cr.y + 70.0, TextSize::S, VERDIGRIS);
         if !done && !available {
             let req: Vec<&str> = tech.prereqs.iter().map(|&p| TECHS[p].name).collect();
             text(&a, &format!("Needs {}", req.join(", ")), cr.x + space::L, cr.y + 90.0, TextSize::Xs, PEACH);
