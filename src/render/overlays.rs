@@ -88,7 +88,7 @@ pub fn draw_ghost(a: &Assets, cam: &Cam, kind: Kind, pos: IVec2, dir: Dir, ok: b
     let r = Rect::new(s0.x, s0.y, size.x, size.y);
     rrect(r, radius_of(size), theme::with_alpha(edge, 0.10));
     rrect_dashed_lines(r, radius_of(size), line::STRONG, edge);
-    if kind.directional() && !matches!(kind, Kind::Belt | Kind::Drill | Kind::Tunnel | Kind::Splitter | Kind::Arm) {
+    if kind.directional() && !matches!(kind, Kind::Belt | Kind::Drill | Kind::Tunnel | Kind::Splitter) {
         let c = s0 + size * 0.5;
         let f = dir.vec().as_vec2();
         let side = vec2(-f.y, f.x);

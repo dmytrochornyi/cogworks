@@ -109,7 +109,7 @@ pub fn draw_kind(a: &Assets, kind: Kind, dir: Dir, s0: Vec2, z: f32, tint: Color
         }
         Kind::Arm => {
             a.draw("arm_base", s0, Vec2::splat(z), p);
-            draw_arm_limb(a, c, angle(dir) - FRAC_PI_2, z, tint);
+            draw_arm_limb(a, c, arm_limb_angle(None, dir), z, tint);
         }
         Kind::Pipe => a.draw("pipe_hub", s0, Vec2::splat(z), p),
         Kind::Pole => {
@@ -150,6 +150,19 @@ fn draw_arm_limb(a: &Assets, c: Vec2, ang: f32, z: f32, tint: Color) {
     });
     let hand = c + Vec2::from_angle(ang) * 48.0 * k;
     a.draw_centered("arm_hand", hand, Vec2::splat(24.0 * k), ang, tint);
+}
+
+/// The resting limb angle for an arm facing `dir`: it points at the pickup side
+/// (the tile behind the base), from which it swings items to the drop side.
+pub fn arm_idle_angle(dir: Dir) -> f32 {
+    (-dir.vec().as_vec2()).to_angle()
+}
+
+/// Limb angle shared by the placement ghost and the placed arm. The ghost has
+/// no swing yet, so `None` means idle; a placed arm adds `swing * PI` so a full
+/// swing reaches the drop side.
+fn arm_limb_angle(swing: Option<f32>, dir: Dir) -> f32 {
+    arm_idle_angle(dir) + swing.unwrap_or(0.0) * PI
 }
 
 /// World position of an item on a belt lane at progress `p`, or None if it's underground.
@@ -342,7 +355,7 @@ fn draw_entity(a: &Assets, e: &Entity, cam: &Cam, t: f32) {
         State::Arm { held, swing } => {
             let c = s0 + Vec2::splat(z / 2.0);
             a.draw("arm_base", s0, Vec2::splat(z), SpriteParams::default());
-            let ang = (-e.dir.vec().as_vec2()).to_angle() + swing * PI;
+            let ang = arm_limb_angle(Some(*swing), e.dir);
             draw_arm_limb(a, c, ang, z, WHITE);
             if let Some(item) = held {
                 draw_item(a, c + Vec2::from_angle(ang) * 48.0 * k, z * 0.36, *item);
@@ -434,3 +447,19 @@ pub const VENTS: &[(Kind, Vec2)] = &[
     (Kind::Wellhead, Vec2::new(46.0, 24.0)),
     (Kind::GrandEngine, Vec2::new(128.0, 22.0)),
 ];
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn arm_ghost_matches_placed_arm() {
+        for d in Dir::ALL {
+            let idle = arm_idle_angle(d);
+            assert!((arm_limb_angle(None, d) - idle).abs() < 1e-5, "ghost {d:?} != idle");
+            assert!((arm_limb_angle(Some(0.0), d) - idle).abs() < 1e-5, "placed {d:?} != idle");
+        }
+        let west = arm_idle_angle(Dir::E);
+        assert!((west.abs() - PI).abs() < 1e-5, "Dir::E should point west, got {west}");
+    }
+}
