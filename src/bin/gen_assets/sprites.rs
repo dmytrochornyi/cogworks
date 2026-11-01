@@ -808,7 +808,7 @@ pub fn lab() -> Canvas {
     cv.fill(move |p| rbox(p, x, y, w, th, 26.0), move |p| {
         let gx = ((p.x - x) / (w / 6.0)).fract();
         let gy = ((p.y - y) / (th / 4.0)).fract();
-        if gx < 0.04 || gx > 0.96 || gy < 0.04 || gy > 0.96 {
+        if !(0.04..=0.96).contains(&gx) || !(0.04..=0.96).contains(&gy) {
             with_alpha(COPPER_DARK, 0.30)
         } else {
             with_alpha(INK, 0.0)
@@ -1209,6 +1209,9 @@ pub fn player(frame: u32) -> Canvas {
     let bob = frame as f32 * 1.5;
     let c = v(32.0, 32.0 - bob);
     ground_shadow(&mut cv, v(32.0, 50.0), v(15.0, 5.0), 0.35);
+    // Standing feet stay on the ground (they don't bob with the body), so the
+    // robot keeps its legs while breathing instead of growing them on the move.
+    player_feet(&mut cv, v(32.0, 51.0), 0.0);
     player_body(&mut cv, c, bob);
     cv
 }
@@ -1228,12 +1231,7 @@ pub fn player_walk(frame: u32) -> Canvas {
         2 => -1.0,
         _ => 0.0,
     };
-    // Little feet at the bottom, alternating forward (up) and back (down).
-    for side in [-1.0f32, 1.0] {
-        let x = c.x + side * 8.0;
-        let y = c.y + 19.0 - side * step * 3.0;
-        cv.solid(move |p| capsule(p, v(x, y - 2.0), v(x, y + 4.0), 2.4), INK, 0.8);
-    }
+    player_feet(&mut cv, v(32.0, 51.0), step);
     // Tiny arms swinging on the sides, opposite to the same-side foot.
     for side in [-1.0f32, 1.0] {
         let shoulder = v(c.x + side * 13.0, c.y + 1.0);
@@ -1242,6 +1240,17 @@ pub fn player_walk(frame: u32) -> Canvas {
     }
     player_body(&mut cv, c, 0.0);
     cv
+}
+
+/// The two little feet: planted side by side when `step == 0`, otherwise one
+/// steps ahead of the other. `anchor` is the ground point between the feet, so
+/// the idle sprite can keep them planted while its body bobs.
+fn player_feet(cv: &mut Canvas, anchor: Vec2, step: f32) {
+    for side in [-1.0f32, 1.0] {
+        let x = anchor.x + side * 8.0;
+        let y = anchor.y - side * step * 3.0;
+        cv.solid(move |p| capsule(p, v(x, y - 2.0), v(x, y + 4.0), 2.4), INK, 0.8);
+    }
 }
 
 /// Body, scarf, visor, eyes and antenna shared by the idle and walk sprites.
@@ -1570,12 +1579,12 @@ pub fn icon(name: &str) -> Canvas {
 // ---------------------------------------------------------------- cursors
 
 /// Outline width for the cozy cursor sprites, in native pixels.
-const OW_CURSOR: f32 = 2.5;
+const OW_CURSOR: f32 = 3.0;
 
-/// Wood-trim outline, soft shadow and paper fill shared by the cursor sprites.
+/// Dark trim outline, soft shadow and paper fill shared by the cursor sprites.
 fn cursor_body(cv: &mut Canvas, sdf: impl Fn(Vec2) -> f32 + Copy, fill: impl Fn(Vec2) -> C) {
-    let outline = hex(theme::WOOD_TRIM);
-    cv.shadow(sdf, v(2.0, 3.0), 2.5, 0.35);
+    let outline = hex(theme::TRIM_SHADOW);
+    cv.shadow(sdf, v(2.0, 3.0), 3.0, 0.5);
     cv.fill(move |p| sdf(p) - OW_CURSOR, |_| outline);
     cv.fill(sdf, fill);
 }
@@ -1620,11 +1629,11 @@ pub fn cursor_build() -> Canvas {
 /// The pick tip sits at the hotspot (8, 14).
 pub fn cursor_mine() -> Canvas {
     let mut cv = Canvas::new(48, 48);
-    let outline = hex(theme::WOOD_TRIM);
+    let outline = hex(theme::TRIM_SHADOW);
     let head = move |p: Vec2| capsule(p, v(7.0, 14.0), v(26.0, 19.0), 4.0);
     let handle = move |p: Vec2| capsule(p, v(17.0, 16.0), v(29.0, 40.0), 3.2);
     let sdf = move |p: Vec2| head(p).min(handle(p));
-    cv.shadow(sdf, v(2.0, 3.0), 2.5, 0.35);
+    cv.shadow(sdf, v(2.0, 3.0), 3.0, 0.5);
     cv.fill(move |p| sdf(p) - OW_CURSOR, |_| outline);
     cv.fill(head, move |p| mix(BRASS, COPPER, ((p.x - 7.0) / 19.0).clamp(0.0, 1.0)));
     cv.fill(handle, move |p| mix(WOOD, WOOD_DARK, ((p.y - 16.0) / 24.0).clamp(0.0, 1.0)));

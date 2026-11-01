@@ -159,25 +159,31 @@ fn draw_recipe_card(a: &Assets, world: &World, recipe: usize) {
             (None, None) => "",
         };
         text(a, name, left + 26.0, cy + 4.0, TextSize::M, TEXT);
-        // Fluids have no backpack count, so show the amount; items show have/need.
-        let right_text = if row.fluid.is_some() {
-            row.need.to_string()
-        } else {
-            format!("{} / {}", row.have, row.need)
-        };
         let (col, auto) = match row.state {
             InputState::Enough => (TEXT, false),
             InputState::AutoCraft => (KEY, true),
             InputState::Missing => (PEACH, false),
         };
-        let tw = text_w(a, &right_text, TextSize::M);
-        let tx = right - tw;
-        text(a, &right_text, tx, cy + 4.0, TextSize::M, col);
+        // Requirement first (`×N`) in the state colour; items also show a muted
+        // `have M` after it. Fluids have no backpack count, so just the need.
+        let mut req_x = right;
+        if row.fluid.is_some() {
+            let req = format!("×{}", row.need);
+            req_x -= text_w(a, &req, TextSize::M);
+            text(a, &req, req_x, cy + 4.0, TextSize::M, col);
+        } else {
+            let have = format!("have {}", row.have);
+            let have_x = right - text_w(a, &have, TextSize::M);
+            text(a, &have, have_x, cy + 4.0, TextSize::M, TEXT_DIM);
+            let req = format!("×{}", row.need);
+            req_x = have_x - text_w(a, &req, TextSize::M) - space::XS;
+            text(a, &req, req_x, cy + 4.0, TextSize::M, col);
+        }
         if auto {
             let s = "auto";
             let cw = text_w(a, s, TextSize::Xs) + 10.0;
             let ch = 16.0;
-            let cr = Rect::new(tx - cw - space::XS, cy + (row_h - ch) / 2.0, cw, ch);
+            let cr = Rect::new(req_x - cw - space::XS, cy + (row_h - ch) / 2.0, cw, ch);
             rrect(cr, radius::SM, BG);
             rrect_lines(cr, radius::SM, line::HAIR, EDGE);
             text_in(a, s, cr, TextSize::Xs, KEY);
