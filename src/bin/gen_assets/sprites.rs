@@ -420,43 +420,46 @@ pub fn arm_base() -> Canvas {
     let mut cv = Canvas::new(64, 64);
     let c = v(32.0, 32.0);
     cv.shadow(move |p| circle(p, c, 18.0), v(3.0, 4.0), 5.0, 0.35);
-    cv.shape(move |p| circle(p, c, 18.0), move |p| mix(HONEY, RUST, (p.y - 14.0) / 36.0), OW);
-    cv.solid(move |p| circle(p, c, 9.0), CHAR, 1.5);
+    cv.shape(move |p| circle(p, c, 18.0), move |p| mix(lit(WOOD_DARK, 1.15), lit(WOOD_DARK, 0.7), (p.y - 14.0) / 36.0), OW);
+    cv.solid(move |p| circle(p, c, 9.0), BRASS, 1.5);
     for k in 0..6 {
         let rc = c + Vec2::from_angle(k as f32 * TAU / 6.0) * 13.5;
-        rivet(&mut cv, rc, 1.8);
+        cv.solid(move |p| circle(p, rc, 1.9), BRASS, 1.0);
+        cv.fill(move |p| circle(p, rc - v(0.5, 0.5), 0.8), |_| with_alpha(WHITE, 0.6));
     }
     cv
 }
 
 pub fn arm_limb() -> Canvas {
     let mut cv = Canvas::new(64, 16);
-    cv.shape(|p| capsule(p, v(8.0, 8.0), v(56.0, 8.0), 5.0), |p| mix(CREAM, STEEL, (p.y - 3.0) / 10.0), OW_LIMB);
-    cv.solid(|p| circle(p, v(8.0, 8.0), 3.0), BROWN_D, OW_LIMB * 0.5);
+    cv.shape(|p| capsule(p, v(8.0, 8.0), v(56.0, 8.0), 5.0), |p| mix(lit(BRASS, 1.1), lit(BRASS, 0.65), (p.y - 3.0) / 10.0), OW_LIMB);
+    cv.solid(|p| circle(p, v(8.0, 8.0), 3.0), WOOD_DARK, OW_LIMB * 0.5);
     cv
 }
 
 pub fn arm_hand() -> Canvas {
     let mut cv = Canvas::new(24, 24);
     for s in [-1.0, 1.0] {
-        cv.solid(move |p| capsule(p, v(8.0, 12.0 + s * 3.0), v(19.0, 12.0 + s * 6.0), 2.4), STEEL_D, OW_HAND * 0.7);
+        cv.solid(move |p| capsule(p, v(8.0, 12.0 + s * 3.0), v(19.0, 12.0 + s * 6.0), 2.4), BRASS, OW_HAND * 0.7);
     }
-    cv.solid(|p| circle(p, v(9.0, 12.0), 5.0), TERRA, OW_HAND);
+    cv.solid(|p| circle(p, v(9.0, 12.0), 5.0), WOOD_DARK, OW_HAND);
     cv
 }
 
 pub fn chest() -> Canvas {
     let mut cv = Canvas::new(64, 64);
-    let wood = WOOD;
+    let wood = WOOD_DARK;
     let (x, y, w, h) = block(&mut cv, 7.0, 8.0, 50.0, 50.0, 11.0, 5.0, wood, side_of(wood));
     for k in 1..4 {
         let ly = y + h * k as f32 / 4.0;
         cv.fill(move |p| rbox(p, x + 4.0, ly - 0.8, w - 8.0, 1.6, 0.8), |_| with_alpha(INK, 0.45));
     }
+    // Brass corner brackets.
     for (cx, cy) in [(x + 5.0, y + 5.0), (x + w - 5.0, y + 5.0), (x + 5.0, y + h - 4.0), (x + w - 5.0, y + h - 4.0)] {
-        rivet(&mut cv, v(cx, cy), 2.6);
+        cv.solid(move |p| rbox(p, cx - 3.0, cy - 3.0, 7.0, 7.0, 2.0), BRASS, 1.2);
+        cv.fill(move |p| circle(p, v(cx, cy), 1.4), |_| with_alpha(WHITE, 0.6));
     }
-    cv.solid(|p| rbox(p, 28.0, 46.0, 8.0, 8.0, 2.0), HONEY, 1.5);
+    cv.solid(|p| rbox(p, 28.0, 46.0, 8.0, 8.0, 2.0), BRASS, 1.5);
     cv
 }
 
@@ -464,9 +467,13 @@ pub fn pipe_hub() -> Canvas {
     let mut cv = Canvas::new(64, 64);
     let c = v(32.0, 32.0);
     cv.shadow(move |p| circle(p, c, 13.0), v(2.0, 3.0), 3.0, 0.3);
-    cv.shape(move |p| circle(p, c, 13.0), move |p| mix(lit(STEEL, 1.15), STEEL_D, (p.y - 19.0) / 26.0), OW);
+    cv.shape(move |p| circle(p, c, 13.0), move |p| mix(lit(COPPER, 1.15), COPPER_DARK, (p.y - 19.0) / 26.0), OW);
+    // Brass flange ring.
+    cv.solid(move |p| ring(p, c, 10.0, 2.0), BRASS, 1.0);
     for k in 0..4 {
-        rivet(&mut cv, c + Vec2::from_angle(k as f32 * TAU / 4.0 + PI / 4.0) * 8.5, 1.6);
+        let rc = c + Vec2::from_angle(k as f32 * TAU / 4.0 + PI / 4.0) * 8.5;
+        cv.solid(move |p| circle(p, rc, 1.7), BRASS, 1.0);
+        cv.fill(move |p| circle(p, rc - v(0.5, 0.5), 0.7), |_| with_alpha(WHITE, 0.6));
     }
     cv
 }
@@ -474,18 +481,18 @@ pub fn pipe_hub() -> Canvas {
 /// Half a pipe, from the hub centre towards the east edge.
 pub fn pipe_seg() -> Canvas {
     let mut cv = Canvas::new(32, 24);
-    cv.fill(|p| rbox(p, -2.0, 3.0, 36.0, 18.0, 0.0), |p| mix(lit(STEEL, 1.2), STEEL_D, (p.y - 3.0) / 18.0));
+    cv.fill(|p| rbox(p, -2.0, 3.0, 36.0, 18.0, 0.0), |p| mix(lit(COPPER, 1.2), COPPER_DARK, (p.y - 3.0) / 18.0));
     for y in [3.0, 19.5] {
-        cv.fill(move |p| rbox(p, -2.0, y, 36.0, OW_PIPE, 0.0), |_| INK);
+        cv.fill(move |p| rbox(p, -2.0, y, 36.0, OW_PIPE, 0.0), |_| BRASS);
     }
-    cv.fill(|p| rbox(p, 22.0, 1.0, 6.0, 22.0, 2.0), |_| STEEL_D);
-    cv.fill(|p| rbox(p, 22.0, 1.0, 6.0, 22.0, 2.0).max(-rbox(p, 23.5, 2.5, 3.0, 19.0, 1.0)), |_| INK);
+    cv.fill(|p| rbox(p, 22.0, 1.0, 6.0, 22.0, 2.0), |_| BRASS);
+    cv.fill(|p| rbox(p, 22.0, 1.0, 6.0, 22.0, 2.0).max(-rbox(p, 23.5, 2.5, 3.0, 19.0, 1.0)), |_| TRIM_DARK);
     cv
 }
 
 pub fn port(input: bool) -> Canvas {
     let mut cv = Canvas::new(24, 24);
-    let col = if input { TEAL } else { PEACH };
+    let col = if input { BRASS } else { TRIM };
     cv.solid(|p| circle(p, v(12.0, 12.0), 8.0), col, OW_PORT);
     cv.solid(|p| rbox(p, 7.0, 10.5, 10.0, 3.0, 1.5), CREAM, OW_PORT * 0.5);
     cv
@@ -705,16 +712,16 @@ pub fn drill_bit() -> Canvas {
         let a = k as f32 * TAU / 3.0;
         let tip = c + Vec2::from_angle(a) * 24.0;
         let mid = c + Vec2::from_angle(a + 0.35) * 14.0;
-        cv.shape(move |p| capsule(p, c, mid, 5.0).min(capsule(p, mid, tip, 3.5)), |p| mix(CREAM, STEEL, p.y / 64.0), OW_OVERLAY);
+        cv.shape(move |p| capsule(p, c, mid, 5.0).min(capsule(p, mid, tip, 3.5)), |p| mix(STEEL_LIGHT, STEEL_D, p.y / 64.0), OW_OVERLAY);
     }
-    cv.solid(move |p| circle(p, c, 8.0), TERRA, OW_OVERLAY * 0.75);
+    cv.solid(move |p| circle(p, c, 8.0), BRASS, OW_OVERLAY * 0.75);
     cv
 }
 
 pub fn chute() -> Canvas {
     let mut cv = Canvas::new(32, 32);
     let pts = [v(4.0, 6.0), v(28.0, 10.0), v(28.0, 22.0), v(4.0, 26.0)];
-    cv.shape(move |p| poly(p, &pts), |p| mix(HONEY, RUST, p.y / 32.0), OW_CHUTE);
+    cv.shape(move |p| poly(p, &pts), |p| mix(COPPER_LIGHT, COPPER_DARK, p.y / 32.0), OW_CHUTE);
     cv
 }
 
@@ -876,13 +883,13 @@ pub fn generator() -> Canvas {
 pub fn wheel() -> Canvas {
     let mut cv = Canvas::new(64, 64);
     let c = v(32.0, 32.0);
-    cv.solid(move |p| ring(p, c, 25.0, 6.0), MUSTARD, OW_OVERLAY);
+    cv.solid(move |p| ring(p, c, 25.0, 6.0), BRASS, OW_OVERLAY);
     for k in 0..6 {
         let a = k as f32 * TAU / 6.0;
         let e = c + Vec2::from_angle(a) * 23.0;
-        cv.solid(move |p| capsule(p, c, e, 2.2), HONEY, OW_OVERLAY * 0.6);
+        cv.solid(move |p| capsule(p, c, e, 2.2), COPPER, OW_OVERLAY * 0.6);
     }
-    cv.solid(move |p| circle(p, c, 6.0), RUST, OW_OVERLAY);
+    cv.solid(move |p| circle(p, c, 6.0), WOOD_DARK, OW_OVERLAY);
     cv
 }
 
@@ -924,7 +931,7 @@ pub fn pole() -> Canvas {
 
 pub fn solar() -> Canvas {
     let mut cv = Canvas::new(128, 128);
-    let (x, y, w, h) = block(&mut cv, 6.0, 8.0, 116.0, 112.0, 10.0, 8.0, PAPER, BROWN);
+    let (x, y, w, h) = block(&mut cv, 6.0, 8.0, 116.0, 112.0, 10.0, 8.0, BRASS, COPPER_DARK);
     for r in 0..3 {
         for c in 0..3 {
             let cx = x + 8.0 + c as f32 * (w - 16.0) / 3.0;
@@ -975,11 +982,11 @@ pub fn wellhead() -> Canvas {
 
 pub fn beam() -> Canvas {
     let mut cv = Canvas::new(112, 40);
-    cv.shape(|p| capsule(p, v(14.0, 20.0), v(96.0, 20.0), 6.0), |p| mix(HONEY, MUSTARD, p.y / 40.0), OW_OVERLAY);
+    cv.shape(|p| capsule(p, v(14.0, 20.0), v(96.0, 20.0), 6.0), |p| mix(lit(WOOD_DARK, 1.2), WOOD_DARK, p.y / 40.0), OW_OVERLAY);
     let head = [v(8.0, 8.0), v(22.0, 10.0), v(22.0, 32.0), v(8.0, 34.0)];
-    cv.solid(move |p| poly(p, &head), RUST, OW_OVERLAY);
-    cv.solid(|p| circle(p, v(62.0, 20.0), 6.0), STEEL, OW_OVERLAY * 0.8);
-    cv.solid(|p| rbox(p, 92.0, 10.0, 14.0, 20.0, 3.0), CHAR, OW_OVERLAY * 0.8);
+    cv.solid(move |p| poly(p, &head), BRASS, OW_OVERLAY);
+    cv.solid(|p| circle(p, v(62.0, 20.0), 6.0), BRASS, OW_OVERLAY * 0.8);
+    cv.solid(|p| rbox(p, 92.0, 10.0, 14.0, 20.0, 3.0), COPPER_DARK, OW_OVERLAY * 0.8);
     cv
 }
 
@@ -1058,9 +1065,9 @@ pub fn mixer() -> Canvas {
 pub fn paddle() -> Canvas {
     let mut cv = Canvas::new(64, 64);
     let c = v(32.0, 32.0);
-    cv.solid(move |p| capsule(p, c - v(24.0, 0.0), c + v(24.0, 0.0), 4.0), CREAM, OW_OVERLAY);
-    cv.solid(move |p| capsule(p, c - v(0.0, 24.0), c + v(0.0, 24.0), 4.0), CREAM, OW_OVERLAY);
-    cv.solid(move |p| circle(p, c, 7.0), TERRA, OW_OVERLAY);
+    cv.solid(move |p| capsule(p, c - v(24.0, 0.0), c + v(24.0, 0.0), 4.0), BRASS, OW_OVERLAY);
+    cv.solid(move |p| capsule(p, c - v(0.0, 24.0), c + v(0.0, 24.0), 4.0), BRASS, OW_OVERLAY);
+    cv.solid(move |p| circle(p, c, 7.0), WOOD_DARK, OW_OVERLAY);
     cv
 }
 
@@ -1075,18 +1082,21 @@ pub fn wall() -> Canvas {
         if fy < 0.12 || fx < 0.07 { with_alpha(INK, 0.28) } else { with_alpha(INK, 0.0) }
     });
     for (c, r) in [(v(14.0, 12.0), 5.0), (v(46.0, 40.0), 4.0)] {
-        cv.fill(move |p| circle(p, c, r), |_| with_alpha(SAGE_D, 0.75));
+        cv.fill(move |p| circle(p, c, r), |_| with_alpha(lit(WALL_STONE, 0.72), 0.7));
+        cv.fill(move |p| circle(p, c - v(r * 0.25, r * 0.25), r * 0.5), |_| with_alpha(lit(WALL_STONE, 0.94), 0.7));
     }
     cv
 }
 
 pub fn sentry_base() -> Canvas {
     let mut cv = Canvas::new(128, 128);
-    let (x, y, w, h) = block(&mut cv, 8.0, 10.0, 112.0, 110.0, 16.0, 30.0, OLIVE, lit(OLIVE, 0.66));
+    let (x, y, w, h) = block(&mut cv, 8.0, 10.0, 112.0, 110.0, 16.0, 30.0, WOOD_DARK, side_of(BROWN_D));
     let c = v(x + w / 2.0, y + h / 2.0);
-    cv.solid(move |p| ring(p, c, 34.0, 6.0), MUSTARD, 1.8);
+    cv.solid(move |p| ring(p, c, 34.0, 6.0), BRASS, 1.8);
     for k in 0..8 {
-        rivet(&mut cv, c + Vec2::from_angle(k as f32 * TAU / 8.0) * 34.0, 2.0);
+        let rc = c + Vec2::from_angle(k as f32 * TAU / 8.0) * 34.0;
+        cv.solid(move |p| circle(p, rc, 2.2), BRASS, 1.0);
+        cv.fill(move |p| circle(p, rc - v(0.6, 0.6), 0.9), |_| with_alpha(WHITE, 0.6));
     }
     cv
 }
@@ -1096,9 +1106,11 @@ pub fn sentry_head() -> Canvas {
     let mut cv = Canvas::new(96, 96);
     let c = v(48.0, 48.0);
     cv.shadow(move |p| circle(p, c, 22.0), v(3.0, 4.0), 4.0, 0.35);
-    cv.shape(|p| rbox(p, 50.0, 41.0, 42.0, 14.0, 5.0), |p| mix(STEEL, STEEL_D, (p.y - 41.0) / 14.0), OW_OVERLAY);
-    cv.solid(|p| rbox(p, 84.0, 39.0, 9.0, 18.0, 3.0), CHAR, OW_OVERLAY * 0.8);
-    cv.shape(move |p| circle(p, c, 22.0), move |p| mix(lit(SAGE, 1.1), OLIVE, (p.y - 26.0) / 44.0), OW_OVERLAY);
+    // Verdigris barrel pointing east.
+    cv.shape(|p| rbox(p, 50.0, 41.0, 42.0, 14.0, 5.0), |p| mix(lit(TRIM, 1.15), TRIM_DARK, (p.y - 41.0) / 14.0), OW_OVERLAY);
+    cv.solid(|p| rbox(p, 84.0, 39.0, 9.0, 18.0, 3.0), BRASS, OW_OVERLAY * 0.8);
+    // Brass turret housing.
+    cv.shape(move |p| circle(p, c, 22.0), move |p| mix(lit(BRASS, 1.1), lit(BRASS, 0.62), (p.y - 26.0) / 44.0), OW_OVERLAY);
     cv.solid(move |p| rbox(p, 38.0, 42.0, 14.0, 6.0, 3.0), INK, 0.0);
     cv.fill(move |p| circle(p, v(46.0, 45.0), 2.2), |_| LAMP);
     cv
@@ -1149,14 +1161,14 @@ pub fn engine() -> Canvas {
 pub fn engine_ring() -> Canvas {
     let mut cv = Canvas::new(160, 160);
     let c = v(80.0, 80.0);
-    cv.solid(move |p| ring(p, c, 64.0, 8.0), HONEY, OW_OVERLAY);
+    cv.solid(move |p| ring(p, c, 64.0, 8.0), BRASS, OW_OVERLAY);
     for k in 0..16 {
         let a = k as f32 * TAU / 16.0;
         let m = c + Vec2::from_angle(a) * 64.0;
-        let col = if k % 2 == 0 { ROSE } else { CREAM };
+        let col = if k % 2 == 0 { TRIM } else { COPPER };
         cv.solid(move |p| circle(p, m, 4.0), col, OW_OVERLAY * 0.7);
     }
-    cv.solid(move |p| ring(p, c, 44.0, 4.0), with_alpha(PEACH, 0.9), OW_OVERLAY * 0.7);
+    cv.solid(move |p| ring(p, c, 44.0, 4.0), with_alpha(COPPER_LIGHT, 0.9), OW_OVERLAY * 0.7);
     cv
 }
 
@@ -1187,12 +1199,12 @@ pub fn player(frame: u32) -> Canvas {
     ground_shadow(&mut cv, v(32.0, 50.0), v(15.0, 5.0), 0.35);
     // Antenna with a little glowing bulb.
     let tip = c + v(9.0, -22.0 + bob * 0.5);
-    cv.solid(move |p| capsule(p, c + v(5.0, -12.0), tip, 1.4), CHAR, 0.0);
-    cv.solid(move |p| circle(p, tip, 3.6), HONEY, 1.5);
+    cv.solid(move |p| capsule(p, c + v(5.0, -12.0), tip, 1.4), BROWN_D, 0.0);
+    cv.solid(move |p| circle(p, tip, 3.6), LAMP, 1.5);
     cv.shape(move |p| circle(p, c, 17.0), move |p| mix(CREAM, PAPER, (p.y - c.y + 17.0) / 34.0), OW);
-    // Scarf.
-    cv.shape(move |p| ring(p, c + v(0.0, 3.0), 14.0, 5.0).max(c.y + 4.0 - p.y), |p| mix(PEACH, TERRA, (p.x - 14.0) / 36.0), 1.6);
-    cv.solid(move |p| rbox(p, c.x + 9.0, c.y + 10.0, 5.0, 10.0, 2.5), TERRA, 1.4);
+    // Scarf: a soft dusty-rose accent, like the machine roofs.
+    cv.shape(move |p| ring(p, c + v(0.0, 3.0), 14.0, 5.0).max(c.y + 4.0 - p.y), |p| mix(ROOF_LIGHT, ROOF, (p.x - 14.0) / 36.0), 1.6);
+    cv.solid(move |p| rbox(p, c.x + 9.0, c.y + 10.0, 5.0, 10.0, 2.5), ROOF_SHADE, 1.4);
     // Visor and eyes.
     cv.solid(move |p| rbox(p, c.x - 11.0, c.y - 9.0, 22.0, 11.0, 5.5), VISOR, 1.8);
     for dx in [-4.5, 4.5] {
@@ -1260,14 +1272,14 @@ pub fn item(name: &str) -> Canvas {
         cv.fill(|p| ellipse(p, v(19.0, 27.0), v(2.0, 4.0)), |_| with_alpha(WHITE, 0.6));
     };
     let crate_of = |cv: &mut Canvas, tip: C| {
-        cv.solid(|p| rbox(p, 8.0, 20.0, 32.0, 20.0, 3.0), OLIVE, o);
+        cv.solid(|p| rbox(p, 8.0, 20.0, 32.0, 20.0, 3.0), WOOD_DARK, o);
         for k in 0..4 {
             let x = 12.0 + k as f32 * 7.0;
-            cv.solid(move |p| rbox(p, x, 8.0, 5.0, 14.0, 2.5), HONEY, inner);
+            cv.solid(move |p| rbox(p, x, 8.0, 5.0, 14.0, 2.5), BRASS, inner);
             cv.fill(move |p| rbox(p, x, 8.0, 5.0, 5.0, 2.5), move |_| tip);
         }
-        cv.solid(|p| rbox(p, 8.0, 20.0, 32.0, 20.0, 3.0), OLIVE, o);
-        cv.fill(|p| rbox(p, 14.0, 26.0, 20.0, 6.0, 2.0), |_| with_alpha(CREAM, 0.7));
+        cv.solid(|p| rbox(p, 8.0, 20.0, 32.0, 20.0, 3.0), WOOD_DARK, o);
+        cv.fill(|p| rbox(p, 14.0, 26.0, 20.0, 6.0, 2.0), |_| with_alpha(PAPER, 0.6));
     };
     match name {
         "iron_ore" => chunk(&mut cv, ORE_IRON, ORE_IRON_FACET),
@@ -1431,16 +1443,16 @@ pub fn icon(name: &str) -> Canvas {
         }
         "flask" => {
             let sdf = |p: Vec2| poly(p, &[v(12.0, 4.0), v(20.0, 4.0), v(20.0, 12.0), v(27.0, 27.0), v(5.0, 27.0), v(12.0, 12.0)]);
-            cv.solid(sdf, CREAM, o);
-            cv.fill(|p| poly(p, &[v(9.0, 19.0), v(23.0, 19.0), v(25.5, 25.5), v(6.5, 25.5)]), |_| TEAL);
+            cv.solid(sdf, GLASS_LIGHT, o);
+            cv.fill(|p| poly(p, &[v(9.0, 19.0), v(23.0, 19.0), v(25.5, 25.5), v(6.5, 25.5)]), |_| TRIM);
         }
         "bolt" => {
             let pts = [v(18.0, 2.0), v(7.0, 18.0), v(15.0, 18.0), v(12.0, 30.0), v(25.0, 12.0), v(17.0, 12.0)];
-            cv.shape(move |p| poly(p, &pts[..]).min(poly(p, &[pts[0], pts[1], pts[2], pts[5]])), |_| HONEY, o);
+            cv.shape(move |p| poly(p, &pts[..]).min(poly(p, &[pts[0], pts[1], pts[2], pts[5]])), |_| BRASS, o);
         }
         _ => {
-            cv.solid(|p| circle(p, v(10.0, 24.0), 5.0).min(circle(p, v(23.0, 21.0), 5.0)), CREAM, o);
-            cv.solid(|p| rbox(p, 13.0, 5.0, 3.0, 19.0, 1.0).min(rbox(p, 26.0, 3.0, 3.0, 18.0, 1.0)).min(rbox(p, 13.0, 3.0, 16.0, 5.0, 1.5)), CREAM, o);
+            cv.solid(|p| circle(p, v(10.0, 24.0), 5.0).min(circle(p, v(23.0, 21.0), 5.0)), BRASS, o);
+            cv.solid(|p| rbox(p, 13.0, 5.0, 3.0, 19.0, 1.0).min(rbox(p, 26.0, 3.0, 3.0, 18.0, 1.0)).min(rbox(p, 13.0, 3.0, 16.0, 5.0, 1.5)), BRASS, o);
         }
     }
     cv

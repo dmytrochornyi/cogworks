@@ -61,7 +61,7 @@ fn main() {
     add("chute", sprites::chute());
     add("smelter", sprites::smelter());
     add("assembler", sprites::assembler());
-    add("assembler_gear", sprites::gear_overlay(96, 10, paint::MUSTARD));
+    add("assembler_gear", sprites::gear_overlay(96, 10, paint::BRASS));
     add("lab", sprites::lab());
     add("lab_orb", sprites::orb(64, paint::hex(theme::QUARTZ_LIGHT), paint::hex(theme::TEAL)));
     add("generator", sprites::generator());

@@ -1,5 +1,9 @@
 //! A tiny anti-aliased software painter built on signed distance functions.
 
+// Palette alias module: as sprites get repainted, some old colours legitimately
+// fall out of use here. Keep the module compiling without dead-code noise.
+#![allow(dead_code)]
+
 use macroquad::math::{Vec2, vec2};
 use macroquad::texture::Image;
 

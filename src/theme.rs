@@ -390,8 +390,9 @@ pub const VENT_HI: u32 = 0x34484a;
 pub const VENT_LO: u32 = 0x223234;
 pub const GLASS_HI: u32 = 0xcfe4e2;
 pub const LAMP_INNER: u32 = 0xfff0c0;
-pub const SOLAR_HI: u32 = 0x5578a0;
-pub const SOLAR_LO: u32 = 0x2f4462;
+/// Deep blue-violet solar cells (Task 8), lit from a violet top to a deep violet base.
+pub const SOLAR_HI: u32 = 0x6d66b4;
+pub const SOLAR_LO: u32 = 0x312e5c;
 pub const WELLHEAD_STONE: u32 = 0xa39684;
 pub const WELLHEAD_STONE_D: u32 = 0x6f6557;
 pub const WELLHEAD_DARK: u32 = 0x2a1f25;
@@ -439,8 +440,10 @@ pub const DATA_RED: u32 = 0xe0736a;
 pub const DATA_GREEN: u32 = 0x8cbf6e;
 pub const DATA_BLUE: u32 = 0x6fb0d8;
 pub const DATA_PURPLE: u32 = 0xb98ae0;
-pub const SMOKE: u32 = 0xf1e6d6;
-pub const CLOUD: u32 = 0x2a1c30;
+/// Warmer, softer steam/smoke tint (Task 8).
+pub const SMOKE: u32 = 0xf5e5ce;
+/// Cloud shadow colour, lavender instead of plum (Task 8).
+pub const CLOUD: u32 = 0x514b86;
 pub const HEART: u32 = 0xf08c84;
 
 // ---------------------------------------------------------------- item colours
