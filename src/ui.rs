@@ -62,6 +62,16 @@ pub fn ui_mouse() -> Vec2 {
     m / ui_scale()
 }
 
+/// The UI camera, laid out in logical UI space over the given size.
+///
+/// macroquad 0.4 inverts Y again for cameras without a render target, so
+/// `from_display_rect` alone draws the UI upside down. Flip it back to y-down.
+pub fn ui_camera(w: f32, h: f32) -> Camera2D {
+    let mut cam = Camera2D::from_display_rect(Rect::new(0.0, 0.0, w, h));
+    cam.zoom.y = -cam.zoom.y;
+    cam
+}
+
 /// Restrict drawing to `r` while the research grid scrolls.
 fn clip(r: Rect) {
     let s = ui_scale();
@@ -536,11 +546,7 @@ impl Minimap {
 pub fn draw(g: &mut Game) {
     g.ui_rects.clear();
     g.tooltip.clear();
-    let mut cam = Camera2D::from_display_rect(Rect::new(0.0, 0.0, ui_width(), ui_height()));
-    // macroquad 0.4 inverts Y again for cameras without a render target, so
-    // `from_display_rect` alone draws the UI upside down. Flip it back to y-down.
-    cam.zoom.y = -cam.zoom.y;
-    set_camera(&cam);
+    set_camera(&ui_camera(ui_width(), ui_height()));
 
     hud(g);
     quickbar(g);
@@ -1274,6 +1280,17 @@ mod tests {
         assert!((scale_for_height(768.0) - 768.0 / 900.0).abs() < 1e-6);
         assert_eq!(scale_for_height(600.0), 0.8);
         assert_eq!(scale_for_height(2160.0), 1.6);
+    }
+
+    #[test]
+    fn ui_camera_is_y_down() {
+        let cam = ui_camera(1000.0, 500.0);
+        let m = cam.matrix();
+        let origin = m.project_point3(vec3(0.0, 0.0, 0.0));
+        let corner = m.project_point3(vec3(1000.0, 500.0, 0.0));
+        let close = |a: f32, b: f32| (a - b).abs() < 1e-4;
+        assert!(close(origin.x, -1.0) && close(origin.y, 1.0), "origin projected to {origin:?}");
+        assert!(close(corner.x, 1.0) && close(corner.y, -1.0), "corner projected to {corner:?}");
     }
 
     #[test]
