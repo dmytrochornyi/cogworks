@@ -3,14 +3,15 @@
 use std::collections::HashMap;
 
 use macroquad::audio::{Sound, load_sound_from_bytes};
-use macroquad::miniquad::{BlendFactor, BlendState, BlendValue, Equation, PipelineParams};
+use macroquad::miniquad::{BlendFactor, BlendState, BlendValue, Equation, MipmapFilterMode, PipelineParams};
 use macroquad::prelude::*;
 
 use crate::assets_list::{SOUNDS, SPRITES};
 
 const ATLAS: u32 = 2048;
-/// Each sprite's edge pixels are repeated into this border so filtering never bleeds.
-const PAD: u32 = 2;
+/// Each sprite's edge pixels are repeated into this border so filtering never
+/// bleeds. 8 px keeps the smallest mip level clear of neighbouring sprites.
+const PAD: u32 = 8;
 
 pub struct Assets {
     pub atlas: Texture2D,
@@ -61,7 +62,15 @@ impl Assets {
             row = row.max(h + 2 * PAD);
         }
         let atlas = Texture2D::from_image(&atlas);
-        atlas.set_filter(FilterMode::Linear);
+        // Linear filtering plus mipmaps keep the packed sprites clean when zoomed
+        // out. miniquad 0.4 exposes mipmap generation, so build them and use a
+        // mipmapped min filter on the raw miniquad texture.
+        unsafe {
+            let id = atlas.raw_miniquad_id();
+            let ctx = get_internal_gl().quad_context;
+            ctx.texture_set_filter(id, FilterMode::Linear, MipmapFilterMode::Linear);
+            ctx.texture_generate_mipmaps(id);
+        }
 
         let mut sounds = HashMap::new();
         for (name, bytes) in SOUNDS {

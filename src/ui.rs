@@ -113,9 +113,9 @@ pub fn rrect(r: Rect, rad: f32, col: Color) {
     draw_rectangle(r.x + rad, r.y, r.w - 2.0 * rad, rad, col);
     draw_rectangle(r.x + rad, r.bottom() - rad, r.w - 2.0 * rad, rad, col);
     for (c, start) in corner_centers(r, rad).into_iter().zip(CORNERS) {
-        for k in 0..6 {
-            let a0 = start + k as f32 / 6.0 * FRAC_PI_2;
-            let a1 = start + (k + 1) as f32 / 6.0 * FRAC_PI_2;
+        for k in 0..12 {
+            let a0 = start + k as f32 / 12.0 * FRAC_PI_2;
+            let a1 = start + (k + 1) as f32 / 12.0 * FRAC_PI_2;
             draw_triangle(c, c + Vec2::from_angle(a0) * rad, c + Vec2::from_angle(a1) * rad, col);
         }
     }
@@ -128,9 +128,9 @@ pub fn rrect_lines(r: Rect, rad: f32, thick: f32, col: Color) {
     draw_line(r.x, r.y + rad, r.x, r.bottom() - rad, thick, col);
     draw_line(r.right(), r.y + rad, r.right(), r.bottom() - rad, thick, col);
     for (c, start) in corner_centers(r, rad).into_iter().zip(CORNERS) {
-        for k in 0..6 {
-            let p0 = c + Vec2::from_angle(start + k as f32 / 6.0 * FRAC_PI_2) * rad;
-            let p1 = c + Vec2::from_angle(start + (k + 1) as f32 / 6.0 * FRAC_PI_2) * rad;
+        for k in 0..12 {
+            let p0 = c + Vec2::from_angle(start + k as f32 / 12.0 * FRAC_PI_2) * rad;
+            let p1 = c + Vec2::from_angle(start + (k + 1) as f32 / 12.0 * FRAC_PI_2) * rad;
             draw_line(p0.x, p0.y, p1.x, p1.y, thick, col);
         }
     }
@@ -147,23 +147,23 @@ pub fn rrect_dashed_lines(r: Rect, rad: f32, thick: f32, col: Color) {
         }
     };
     edge(&mut path, vec2(r.x + rad, r.y), vec2(r.right() - rad, r.y));
-    for k in 0..=6 {
-        let a = -FRAC_PI_2 + k as f32 / 6.0 * FRAC_PI_2;
+    for k in 0..=12 {
+        let a = -FRAC_PI_2 + k as f32 / 12.0 * FRAC_PI_2;
         path.push(vec2(r.right() - rad, r.y + rad) + Vec2::from_angle(a) * rad);
     }
     edge(&mut path, vec2(r.right(), r.y + rad), vec2(r.right(), r.bottom() - rad));
-    for k in 0..=6 {
-        let a = k as f32 / 6.0 * FRAC_PI_2;
+    for k in 0..=12 {
+        let a = k as f32 / 12.0 * FRAC_PI_2;
         path.push(vec2(r.right() - rad, r.bottom() - rad) + Vec2::from_angle(a) * rad);
     }
     edge(&mut path, vec2(r.right() - rad, r.bottom()), vec2(r.x + rad, r.bottom()));
-    for k in 0..=6 {
-        let a = FRAC_PI_2 + k as f32 / 6.0 * FRAC_PI_2;
+    for k in 0..=12 {
+        let a = FRAC_PI_2 + k as f32 / 12.0 * FRAC_PI_2;
         path.push(vec2(r.x + rad, r.bottom() - rad) + Vec2::from_angle(a) * rad);
     }
     edge(&mut path, vec2(r.x, r.bottom() - rad), vec2(r.x, r.y + rad));
-    for k in 0..=6 {
-        let a = PI + k as f32 / 6.0 * FRAC_PI_2;
+    for k in 0..=12 {
+        let a = PI + k as f32 / 12.0 * FRAC_PI_2;
         path.push(vec2(r.x + rad, r.y + rad) + Vec2::from_angle(a) * rad);
     }
     let mut dist = 0.0;
@@ -319,22 +319,29 @@ pub fn surface(r: Rect, elev: Elevation) {
 
 fn surface_alpha(r: Rect, elev: Elevation, alpha: f32) {
     let (rad, fill, border, border_w, shadow) = match elev {
-        Elevation::Panel => (radius::LG, theme::alpha(theme::BG, 0.96), EDGE, line::STRONG, true),
+        Elevation::Panel => (radius::LG, theme::alpha(theme::BG, 0.96), EDGE, line::BASE, true),
         Elevation::Card => (radius::MD, BG2, theme::alpha(theme::EDGE, 0.7), line::BASE, false),
-        Elevation::Tooltip => (radius::MD, theme::alpha(theme::BG, 0.98), EDGE, line::STRONG, true),
-        Elevation::Toast => (radius::MD, theme::alpha(theme::BG, 0.94), EDGE, line::STRONG, true),
-        Elevation::Banner => (radius::LG, theme::alpha(theme::BG, 0.92), EDGE, line::STRONG, true),
+        Elevation::Tooltip => (radius::MD, theme::alpha(theme::BG, 0.98), EDGE, line::BASE, true),
+        Elevation::Toast => (radius::MD, theme::alpha(theme::BG, 0.94), EDGE, line::BASE, true),
+        Elevation::Banner => (radius::LG, theme::alpha(theme::BG, 0.92), EDGE, line::BASE, true),
     };
     let mix_a = |c: Color, a: f32| theme::with_alpha(c, c.a * a * alpha);
     if shadow {
         // Soft drop shadow, kept subtle under the cream surface.
         rrect(Rect::new(r.x + 4.0, r.y + 6.0, r.w, r.h), rad, mix_a(SHADE, 0.22));
         rrect(Rect::new(r.x + 8.0, r.y + 10.0, r.w, r.h), rad, mix_a(SHADE, 0.14));
-        // Hard lacquer under-edge, offset straight down so it reads as paper thickness.
+        // Hard wood under-edge, offset straight down so it reads as paper thickness.
         rrect(Rect::new(r.x, r.y + 3.0, r.w, r.h), rad, mix_a(theme::color(theme::TRIM_SHADOW), 1.0));
     }
-    rrect(r, rad, mix_a(fill, 1.0));
-    rrect_lines(r, rad, border_w, mix_a(border, 1.0));
+    // Border as two filled rounded rects: an outer one in the border colour and
+    // an inner one in the fill colour, inset by the border width. This gives a
+    // clean smooth edge band instead of an anti-aliased outline line.
+    rrect(r, rad, mix_a(border, 1.0));
+    rrect(
+        Rect::new(r.x + border_w, r.y + border_w, r.w - 2.0 * border_w, r.h - 2.0 * border_w),
+        (rad - border_w).max(0.0),
+        mix_a(fill, 1.0),
+    );
 }
 
 /// A window with a title, a close button and an Esc hint.
@@ -448,9 +455,13 @@ fn slot(a: &Assets, r: Rect, item: Option<Item>, count: Option<u32>, selected: b
     // A warm paper "well" under the icon; hovering lightens it to the panel.
     let fill = if hot && !selected { BG } else { SLOT_WELL };
     rrect(r, radius::MD, fill);
-    // Selection is the only lacquer-ringed state; hover keeps the normal edge.
-    let thick = if selected { line::STRONG } else { line::BASE };
-    rrect_lines(r, radius::MD, thick, EDGE);
+    // Selection is the only lacquer-ringed state; hover keeps the normal wood edge.
+    let (thick, ring) = if selected {
+        (line::STRONG, theme::color(theme::LACQUER_500))
+    } else {
+        (line::BASE, EDGE)
+    };
+    rrect_lines(r, radius::MD, thick, ring);
     if let Some(item) = item {
         let tint = if unavailable { theme::alpha(theme::WHITE, 0.4) } else { WHITE };
         draw_item_tint(a, r.center(), r.w * 0.7, item, tint);
@@ -539,7 +550,7 @@ impl Minimap {
             Some(t) => t.update(&self.img),
             None => {
                 let t = Texture2D::from_image(&self.img);
-                t.set_filter(FilterMode::Nearest);
+                t.set_filter(FilterMode::Linear);
                 self.tex = Some(t);
             }
         }

@@ -73,6 +73,15 @@ pub fn contrast(a: u32, b: u32) -> f32 {
     (hi + 0.05) / (lo + 0.05)
 }
 
+/// HSV saturation (0..=1) of a packed `0xrrggbb` colour: how far it sits from
+/// grey. Used to keep the lacquer accent a soft rose instead of an aggressive red.
+pub fn saturation(hex: u32) -> f32 {
+    let c = rgb(hex);
+    let max = c[0].max(c[1]).max(c[2]);
+    let min = c[0].min(c[1]).min(c[2]);
+    if max == 0.0 { 0.0 } else { (max - min) / max }
+}
+
 /// The warm lo-fi grade used by the world shader, applied to flat images too.
 /// Keeps the minimap's greens in the same light as the ground they represent.
 pub fn grade(c: Color) -> Color {
@@ -191,12 +200,14 @@ pub const STEEL_500: u32 = 0x9b938a;
 pub const STEEL_600: u32 = 0x7c746a;
 pub const STEEL_700: u32 = 0x655d55;
 
-// Lacquer red: UI accent, lanterns and machine roofs. 500 is the key colour.
-pub const LACQUER_700: u32 = 0x8c2f28;
-pub const LACQUER_600: u32 = 0xa63a32;
-pub const LACQUER_500: u32 = 0xc8453a;
-pub const LACQUER_400: u32 = 0xdc6b5e;
-pub const LACQUER_300: u32 = 0xec9588;
+// Lacquer: a soft dusty rose-vermilion, used as a thin accent (titles, the
+// selected slot ring, primary buttons) and later for lanterns and machine
+// roofs. 500 is the key colour and stays below ~0.55 HSV saturation.
+pub const LACQUER_700: u32 = 0x8a463c;
+pub const LACQUER_600: u32 = 0x9c4a40;
+pub const LACQUER_500: u32 = 0xc9705f;
+pub const LACQUER_400: u32 = 0xd98b76;
+pub const LACQUER_300: u32 = 0xecb4a4;
 
 // Verdigris teal: roof trim and metal accents.
 pub const VERDIGRIS_600: u32 = 0x468c82;
@@ -256,7 +267,9 @@ pub const WHITE: u32 = 0xffffff;
 
 pub const BG: u32 = PAPER_100;
 pub const BG2: u32 = PAPER_200;
-pub const EDGE: u32 = LACQUER_500;
+/// Warm mid wood-brown for panel edges: cream paper does most of the work now.
+pub const WOOD_TRIM: u32 = 0x9a6b4a;
+pub const EDGE: u32 = WOOD_TRIM;
 pub const SHADE: u32 = 0x140d12;
 pub const SHADOW: u32 = 0x2a1c24;
 pub const BEVEL: u32 = 0xffd9a8;
@@ -269,7 +282,8 @@ pub const TITLE: u32 = LACQUER_600;
 /// Deep gold/amber for key hints and accent text that sits on paper. `HONEY`
 /// is too pale to read on cream; this keeps the gold accent while passing WCAG.
 pub const KEY: u32 = 0x8a5a1e;
-pub const TRIM_SHADOW: u32 = LACQUER_700;
+/// Darker wood, for the panel's hard under-edge that reads as paper thickness.
+pub const TRIM_SHADOW: u32 = 0x6b4a34;
 pub const SLOT_WELL: u32 = PAPER_300;
 
 // ---------------------------------------------------------------- terrain & ores
@@ -516,5 +530,18 @@ mod tests {
             );
         }
         assert!(contrast(TEXT, SLOT_WELL) >= 4.5, "TEXT on SLOT_WELL = {:.2}", contrast(TEXT, SLOT_WELL));
+    }
+
+    /// The lacquer accent reads as a soft dusty rose, not an aggressive red,
+    /// titles stay readable on paper, and panel edges are warm wood trim.
+    #[test]
+    fn soft_red_is_not_aggressive() {
+        assert!(
+            saturation(LACQUER_500) <= 0.55,
+            "LACQUER_500 saturation = {:.2}",
+            saturation(LACQUER_500)
+        );
+        assert!(contrast(TITLE, BG) >= 4.5, "TITLE on BG = {:.2}", contrast(TITLE, BG));
+        assert_eq!(EDGE, WOOD_TRIM, "EDGE must be the warm wood trim");
     }
 }

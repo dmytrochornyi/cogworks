@@ -31,6 +31,7 @@ fn conf() -> Conf {
         window_width: dim("COGWORKS_WIDTH", 1440),
         window_height: dim("COGWORKS_HEIGHT", 900),
         window_resizable: true,
+        sample_count: 4,
         ..Default::default()
     }
 }
