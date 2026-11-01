@@ -48,6 +48,27 @@ fn power_up(w: &mut World, at: IVec2) {
     build(w, Kind::Pole, at + ivec2(2, 0), Dir::N);
 }
 
+/// Sets a pipe's stored fluid and flags the fluid nets for recomputation.
+fn set_pipe(w: &mut World, id: usize, fluid: Option<Fluid>) {
+    if let State::Pipe { fluid: f, amount } = &mut w.entity_mut(id).state {
+        *f = fluid;
+        *amount = if fluid.is_some() { 100.0 } else { 0.0 };
+    }
+    w.fluids.dirty = true;
+}
+
+/// Total fluid held across every live pipe.
+fn pipe_total(w: &World) -> f32 {
+    w.entities
+        .iter()
+        .flatten()
+        .filter_map(|e| match &e.state {
+            State::Pipe { amount, .. } => Some(*amount),
+            _ => None,
+        })
+        .sum()
+}
+
 #[test]
 fn belts_carry_items_into_a_chest() {
     let mut w = blank();
@@ -276,6 +297,181 @@ fn save_round_trip() {
     assert_eq!(back.entity_ref_at(p).map(|e| e.kind), Some(Kind::Belt));
     assert_eq!(back.player.inv, w.player.inv);
     run(&mut back, 1.0);
+}
+
+#[test]
+fn deconstructing_tunnel_exit_refunds_underground_items() {
+    let mut w = blank();
+    build(&mut w, Kind::Tunnel, ivec2(10, 10), Dir::E);
+    build(&mut w, Kind::Tunnel, ivec2(14, 10), Dir::E);
+    // One item is in flight underground, another still sits at the entrance's surface.
+    let entrance = w.entity_at(ivec2(10, 10)).unwrap();
+    if let State::Belt(b) = &mut w.entity_mut(entrance).state {
+        b.lanes[0].push((Item::Coal, 2.5));
+        b.lanes[1].push((Item::Stone, 0.5));
+    }
+    let coal_before = w.player.inv.get(Item::Coal);
+    let stone_before = w.player.inv.get(Item::Stone);
+    w.deconstruct(ivec2(14, 10));
+    assert_eq!(w.player.inv.get(Item::Coal), coal_before + 1, "underground coal refunded");
+    assert_eq!(w.player.inv.get(Item::Stone), stone_before, "surface stone stays put");
+    match &w.entity(entrance).state {
+        State::Belt(b) => {
+            assert!(b.partner.is_none() && b.len == 1.0);
+            let n: usize = b.lanes.iter().map(Vec::len).sum();
+            assert_eq!(n, 1, "only the surface item remains on the unpaired entrance");
+        }
+        _ => unreachable!(),
+    }
+}
+
+#[test]
+fn deleting_pipe_keeps_network_fluid() {
+    let mut w = blank();
+    for x in 0..10 {
+        build(&mut w, Kind::Pipe, ivec2(10 + x, 10), Dir::N);
+    }
+    for x in 0..10 {
+        let id = w.entity_at(ivec2(10 + x, 10)).unwrap();
+        set_pipe(&mut w, id, Some(Fluid::Tar));
+    }
+    w.update(1.0 / 60.0);
+    let net = w.pipe_net(ivec2(10, 10)).unwrap();
+    assert_eq!(w.fluids.nets[net].amount, 1000.0, "10 pipes hold 1000 tar");
+
+    // Removing one pipe costs exactly that pipe's share, nothing more.
+    let mid = w.entity_at(ivec2(15, 10)).unwrap();
+    w.delete(mid);
+    assert_eq!(
+        w.fluids.nets[net].amount,
+        900.0,
+        "the network keeps the other nine shares when one pipe is removed"
+    );
+    // And after the next sync the surviving pipes agree with the network.
+    w.update(1.0 / 60.0);
+    assert!(
+        (pipe_total(&w) - 900.0).abs() < 0.01,
+        "remaining {} tar, want 900",
+        pipe_total(&w)
+    );
+}
+
+#[test]
+fn changing_recipe_keeps_matching_fluid() {
+    // Mixer: Polymer -> Fuel Cell, both Naphtha-in, keeps its fluid tank.
+    let mut w = blank();
+    let m = build(&mut w, Kind::Mixer, ivec2(10, 10), Dir::N);
+    w.set_recipe(m, recipe_id("Polymer"));
+    if let State::Crafter(c) = &mut w.entity_mut(m).state {
+        c.fluid_in = 20.0;
+    }
+    w.set_recipe(m, recipe_id("Fuel Cell"));
+    match &w.entity(m).state {
+        State::Crafter(c) => {
+            assert_eq!(c.fluid_in, 20.0, "Naphtha input kept across a Naphtha-in change");
+            assert!(w.events.is_empty(), "no fluid was emptied: {:?}", w.events);
+        }
+        _ => unreachable!(),
+    }
+
+    // Refinery: Naphtha (Tar-in, Naphtha-out) -> a Naphtha-in recipe discards both tanks.
+    let mut w = blank();
+    let r = build(&mut w, Kind::Refinery, ivec2(10, 10), Dir::N);
+    w.set_recipe(r, recipe_id("Naphtha"));
+    if let State::Crafter(c) = &mut w.entity_mut(r).state {
+        c.fluid_in = 30.0;
+        c.fluid_out = 25.0;
+    }
+    w.set_recipe(r, recipe_id("Polymer"));
+    match &w.entity(r).state {
+        State::Crafter(c) => {
+            assert_eq!(c.fluid_in, 0.0, "mismatched input fluid is discarded");
+            assert_eq!(c.fluid_out, 0.0, "mismatched output fluid is discarded");
+        }
+        _ => unreachable!(),
+    }
+    assert!(w.events.iter().any(|e| e == "Emptied 30 Tar from Refinery"), "events: {:?}", w.events);
+    assert!(w.events.iter().any(|e| e == "Emptied 25 Naphtha from Refinery"), "events: {:?}", w.events);
+}
+
+#[test]
+fn lab_returns_vials_when_research_stops() {
+    // Completing the research elsewhere returns a mid-unit lab's consumed vials.
+    let mut w = blank();
+    let a = build(&mut w, Kind::Lab, ivec2(10, 10), Dir::N);
+    w.set_research(0);
+    if let State::Lab { input, progress } = &mut w.entity_mut(a).state {
+        input.add(Item::SurveyData, 1);
+        *progress = 0.5;
+    }
+    w.research.progress = TECHS[0].units - 1;
+    w.add_research(1);
+    assert!(w.research.done[0]);
+    match &w.entity(a).state {
+        State::Lab { input, progress } => {
+            assert_eq!(input.get(Item::SurveyData), 2, "consumed vial returned on completion");
+            assert_eq!(*progress, 0.0, "lab reset after the research finished");
+        }
+        _ => unreachable!(),
+    }
+
+    // Switching research also returns a mid-unit lab's consumed vials.
+    let mut w = blank();
+    let a = build(&mut w, Kind::Lab, ivec2(10, 10), Dir::N);
+    w.set_research(0);
+    if let State::Lab { input, progress } = &mut w.entity_mut(a).state {
+        input.add(Item::SurveyData, 1);
+        *progress = 0.5;
+    }
+    w.set_research(1);
+    assert_eq!(w.research.current, Some(1));
+    match &w.entity(a).state {
+        State::Lab { input, progress } => {
+            assert_eq!(input.get(Item::SurveyData), 2, "consumed vial returned on switch");
+            assert_eq!(*progress, 0.0, "lab reset for the new research");
+        }
+        _ => unreachable!(),
+    }
+}
+
+#[test]
+fn tunnel_pairs_in_either_order() {
+    let mut w = blank();
+    // Exit placed first, then the entrance further back.
+    let exit = build(&mut w, Kind::Tunnel, ivec2(14, 10), Dir::E);
+    let entrance = build(&mut w, Kind::Tunnel, ivec2(10, 10), Dir::E);
+    match &w.entity(exit).state {
+        State::Belt(b) => assert!(b.exit && b.partner == Some(ivec2(10, 10)), "exit pairs to the entrance behind it"),
+        _ => unreachable!(),
+    }
+    match &w.entity(entrance).state {
+        State::Belt(b) => assert!(!b.exit && b.partner == Some(ivec2(14, 10)), "entrance pairs to the exit ahead"),
+        _ => unreachable!(),
+    }
+}
+
+#[test]
+fn pipes_refuse_to_mix_fluids() {
+    let mut w = blank();
+    let a = build(&mut w, Kind::Pipe, ivec2(10, 10), Dir::N);
+    let b = build(&mut w, Kind::Pipe, ivec2(12, 10), Dir::N);
+    set_pipe(&mut w, a, Some(Fluid::Tar));
+    set_pipe(&mut w, b, Some(Fluid::Naphtha));
+    w.update(1.0 / 60.0);
+
+    match w.check_place(Kind::Pipe, ivec2(11, 10), Dir::N) {
+        Err(e) => assert!(e.contains("Can't mix Tar and Naphtha"), "got {e:?}"),
+        Ok(()) => panic!("mixing Tar and Naphtha must be rejected"),
+    }
+
+    // Same fluid on both sides is fine.
+    let nb = w.pipe_net(ivec2(12, 10)).unwrap();
+    w.fluids.nets[nb].fluid = Some(Fluid::Tar);
+    assert!(w.check_place(Kind::Pipe, ivec2(11, 10), Dir::N).is_ok(), "matching fluids may connect");
+
+    // An empty network never counts as a fluid.
+    w.fluids.nets[nb].fluid = None;
+    assert!(w.check_place(Kind::Pipe, ivec2(11, 10), Dir::N).is_ok(), "empty nets may connect");
 }
 
 /// Writes a showcase save for eyeballing the renderer:

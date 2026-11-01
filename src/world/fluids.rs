@@ -87,6 +87,20 @@ impl World {
         self.entity_ref_at(tile).filter(|e| e.kind == Kind::Pipe).and_then(|e| e.fnet)
     }
 
+    /// Removes a deleted pipe from its network, dropping that pipe's own share
+    /// (fluid isn't refunded) so the surviving pipes keep the rest.
+    pub(super) fn detach_pipe(&mut self, id: usize, net: usize) {
+        let n = &mut self.fluids.nets[net];
+        let share = n.amount / n.pipes.len().max(1) as f32;
+        n.amount = (n.amount - share).max(0.0);
+        n.cap = (n.cap - PIPE_CAP).max(0.0);
+        n.pipes.retain(|&p| p != id);
+        if n.amount < 0.01 {
+            n.amount = 0.0;
+            n.fluid = None;
+        }
+    }
+
     /// Adds fluid to a network; returns how much it took.
     fn fluid_push(&mut self, net: usize, fluid: Fluid, amount: f32) -> f32 {
         let n = &mut self.fluids.nets[net];

@@ -97,12 +97,36 @@ impl World {
         if kind == Kind::Wellhead && !tiles.iter().any(|&p| self.res_at(p) == Some(Resource::Tar)) {
             return Err("Wellheads must be placed over a tar seep".into());
         }
+        if kind == Kind::Pipe {
+            self.check_fluid_mix(pos)?;
+        }
         if kind.solid() && self.player.alive() {
             let (lo, hi) = self.player.bounds();
             let (tlo, thi) = (pos.as_vec2(), (pos + dims(kind, dir)).as_vec2());
             if lo.x < thi.x && hi.x > tlo.x && lo.y < thi.y && hi.y > tlo.y {
                 return Err("You're standing in the way".into());
             }
+        }
+        Ok(())
+    }
+
+    /// Rejects a pipe that would join two networks holding different fluids.
+    fn check_fluid_mix(&self, pos: IVec2) -> Result<(), String> {
+        let mut fluids: Vec<Fluid> = Vec::new();
+        for d in Dir::ALL {
+            let Some(net) = self.pipe_net(pos + d.vec()) else {
+                continue;
+            };
+            let Some(f) = self.fluids.nets[net].fluid else {
+                continue;
+            };
+            if !fluids.contains(&f) {
+                fluids.push(f);
+            }
+        }
+        fluids.sort_by_key(|f| *f as usize);
+        if fluids.len() >= 2 {
+            return Err(format!("Can't mix {} and {}", fluids[0].short_name(), fluids[1].short_name()));
         }
         Ok(())
     }
@@ -131,6 +155,13 @@ impl World {
         let contents = self.contents(id);
         for (i, n) in contents.iter() {
             self.player.inv.add(i, n);
+        }
+        // Picking up one end of a tunnel also returns its in-flight underground
+        // items, which `contents` can't see (they live on the partner's lanes).
+        if kind == Kind::Tunnel {
+            for (i, n) in self.drain_underground(id).iter() {
+                self.player.inv.add(i, n);
+            }
         }
         self.player.inv.add(item, 1);
         self.delete(id);
@@ -165,11 +196,17 @@ impl World {
         let Some(e) = self.entities[id].take() else {
             return;
         };
+        let fnet = e.fnet;
         for p in e.tiles() {
             self.grid[idx(p)] = None;
         }
         self.free.push(id);
         self.mark_dirty(e.kind);
+        // A removed pipe stops counting toward its network right away, so the
+        // surviving pipes keep the rest of the fluid (minus this pipe's share).
+        if let Some(net) = fnet {
+            self.detach_pipe(id, net);
+        }
         if let State::Belt(BeltState { partner: Some(other), .. }) = e.state {
             self.unpair_tunnel(other);
         }

@@ -345,10 +345,12 @@ impl World {
         }
     }
 
-    /// Links a freshly placed tunnel as the exit of an unpaired entrance behind it.
+    /// Links a freshly placed tunnel: an unpaired entrance behind it makes this
+    /// the exit; failing that, an unpaired tunnel ahead makes this the entrance.
     pub(super) fn pair_tunnel(&mut self, id: usize) {
         let e = self.entity(id);
         let (pos, dir) = (e.pos, e.dir);
+        // An unpaired entrance behind (upstream) becomes this tunnel's entrance.
         for d in 1..=TUNNEL_MAX {
             let Some(other) = self.entity_at(pos - dir.vec() * d) else {
                 continue;
@@ -360,6 +362,21 @@ impl World {
                     && b.partner.is_none()
                 {
                     self.pair_tunnel_at(id, other);
+                }
+                return;
+            }
+        }
+        // Otherwise an unpaired tunnel ahead (downstream) becomes this tunnel's exit.
+        for d in 1..=TUNNEL_MAX {
+            let Some(other) = self.entity_at(pos + dir.vec() * d) else {
+                continue;
+            };
+            let o = self.entity(other);
+            if o.kind == Kind::Tunnel && o.dir == dir {
+                if let State::Belt(b) = &o.state
+                    && b.partner.is_none()
+                {
+                    self.pair_tunnel_at(other, id);
                 }
                 return;
             }
@@ -376,6 +393,33 @@ impl World {
                 lane.retain(|(_, p)| *p <= 1.0);
             }
         }
+    }
+
+    /// Removes and returns the items currently underground inside a tunnel, i.e.
+    /// the partner's in-flight items (`p > 1`). The caller refunds them when the
+    /// player picks up one end of a tunnel; enemy destruction simply drops them.
+    pub(super) fn drain_underground(&mut self, id: usize) -> Stock {
+        let mut out = Stock::default();
+        let partner = match &self.entity(id).state {
+            State::Belt(BeltState { partner: Some(p), .. }) => *p,
+            _ => return out,
+        };
+        let Some(pid) = self.entity_at(partner) else {
+            return out;
+        };
+        if let State::Belt(b) = &mut self.entity_mut(pid).state {
+            for lane in &mut b.lanes {
+                lane.retain(|(item, p)| {
+                    if *p > 1.0 {
+                        out.add(*item, 1);
+                        false
+                    } else {
+                        true
+                    }
+                });
+            }
+        }
+        out
     }
 }
 

@@ -36,6 +36,32 @@ pub fn next_gesture(g: Gesture, pressed: bool, down: bool, over_ui: bool) -> Ges
     }
 }
 
+/// What a world-mutating mouse action may do this frame.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum WorldAction {
+    /// Proceed with the action normally.
+    Proceed,
+    /// Blocked while paused; the button was already held, so stay quiet.
+    Ignore,
+    /// Blocked while paused on a fresh press; show the "Paused" toast now.
+    Paused,
+}
+
+/// Gates build/deconstruct/mining while the game is paused.
+///
+/// `pressed` is true only on the frame the button went down, so a fresh press
+/// while paused asks for the "Paused" toast once, and later held frames are
+/// silently ignored. The UI keeps working because this only guards world actions.
+pub fn world_action(paused: bool, pressed: bool) -> WorldAction {
+    if !paused {
+        WorldAction::Proceed
+    } else if pressed {
+        WorldAction::Paused
+    } else {
+        WorldAction::Ignore
+    }
+}
+
 impl Game {
     pub(crate) fn input(&mut self, dt: f32) {
         let mut walk = Vec2::ZERO;
@@ -168,28 +194,26 @@ impl Game {
     fn mouse(&mut self, dt: f32) {
         let over_ui = self.mouse_over_ui();
         let tile = self.mouse_tile();
+        let left_down = is_mouse_button_down(MouseButton::Left);
+        let left_press = is_mouse_button_pressed(MouseButton::Left);
+        let right_down = is_mouse_button_down(MouseButton::Right);
+        let right_press = is_mouse_button_pressed(MouseButton::Right);
 
         // Track which surface each button's press began on.
-        self.gesture_left = next_gesture(
-            self.gesture_left,
-            is_mouse_button_pressed(MouseButton::Left),
-            is_mouse_button_down(MouseButton::Left),
-            over_ui,
-        );
-        self.gesture_right = next_gesture(
-            self.gesture_right,
-            is_mouse_button_pressed(MouseButton::Right),
-            is_mouse_button_down(MouseButton::Right),
-            over_ui,
-        );
+        self.gesture_left = next_gesture(self.gesture_left, left_press, left_down, over_ui);
+        self.gesture_right = next_gesture(self.gesture_right, right_press, right_down, over_ui);
 
         // Left: build, or open the building under the cursor.
-        if !is_mouse_button_down(MouseButton::Left) {
+        if !left_down {
             self.last_drag = None;
         } else if self.gesture_left == Gesture::World {
             match self.tool.and_then(Item::place_kind) {
-                Some(kind) => self.paint(kind),
-                None if is_mouse_button_pressed(MouseButton::Left) => {
+                Some(kind) => match world_action(self.paused, left_press) {
+                    WorldAction::Proceed => self.paint(kind),
+                    WorldAction::Paused => self.toast("Paused"),
+                    WorldAction::Ignore => {}
+                },
+                None if left_press => {
                     self.panel = match self.world.entity_at(tile) {
                         Some(id) if self.world.entity(id).kind != Kind::Hive => {
                             Panel::Building(id, self.world.entity(id).pos)
@@ -202,11 +226,11 @@ impl Game {
         }
 
         // Right: pick up buildings or mine ore.
-        let right = is_mouse_button_down(MouseButton::Right) && self.gesture_right == Gesture::World;
+        let right = right_down && self.gesture_right == Gesture::World;
         let in_reach = self.world.player.in_reach(tile);
         let building = self.world.entity_ref_at(tile).filter(|e| e.kind != Kind::Hive).map(|e| e.pos);
-        match (right, building) {
-            (true, Some(pos)) if in_reach => {
+        match (right, building, world_action(self.paused, right_press)) {
+            (true, Some(pos), WorldAction::Proceed) if in_reach => {
                 self.world.player.mining = None;
                 let progress = match self.deconstruct {
                     Some((p, t)) if p == pos => t + dt / DECONSTRUCT_TIME,
@@ -221,15 +245,23 @@ impl Game {
                     self.deconstruct = Some((pos, progress));
                 }
             }
-            (true, None) if in_reach && self.world.ore_at(tile).is_some() => {
+            (true, Some(_), WorldAction::Paused) => {
+                self.deconstruct = None;
+                self.toast("Paused");
+            }
+            (true, None, WorldAction::Proceed) if in_reach && self.world.ore_at(tile).is_some() => {
                 self.deconstruct = None;
                 if self.world.player.mining.is_none_or(|(t, _)| t != tile) {
                     self.world.player.mining = Some((tile, 0.0));
                 }
             }
-            (true, _) if is_mouse_button_pressed(MouseButton::Right) && !in_reach => {
+            (true, None, WorldAction::Paused) => {
+                self.toast("Paused");
+            }
+            (true, _, WorldAction::Proceed) if right_press && !in_reach => {
                 self.toast("Out of reach");
             }
+            (true, _, _) => {}
             _ => {
                 self.deconstruct = None;
                 self.world.player.mining = None;
@@ -339,5 +371,16 @@ mod tests {
 
         let world = next_gesture(Gesture::Idle, true, true, false);
         assert_eq!(next_gesture(world, false, false, true), Gesture::Idle);
+    }
+
+    #[test]
+    fn paused_world_ignores_build_and_deconstruct() {
+        // Unpaused actions proceed; a held frame doesn't ask for a toast.
+        assert_eq!(world_action(false, true), WorldAction::Proceed);
+        assert_eq!(world_action(false, false), WorldAction::Proceed);
+        // A fresh press while paused is blocked and toasts once.
+        assert_eq!(world_action(true, true), WorldAction::Paused, "a fresh press while paused toasts once");
+        // Later held frames while paused are silently ignored, not toasted every frame.
+        assert_eq!(world_action(true, false), WorldAction::Ignore, "held frames while paused stay quiet");
     }
 }

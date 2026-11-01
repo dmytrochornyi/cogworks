@@ -131,6 +131,14 @@ impl Fluid {
         }
     }
 
+    /// Short name for compact messages like "Can't mix Tar and Naphtha".
+    pub fn short_name(self) -> &'static str {
+        match self {
+            Fluid::Tar => "Tar",
+            Fluid::Naphtha => "Naphtha",
+        }
+    }
+
     pub fn color(self) -> Color {
         match self {
             Fluid::Tar => crate::theme::color(crate::theme::TAR_LIGHT),

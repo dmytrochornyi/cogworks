@@ -123,8 +123,27 @@ impl World {
             self.research.done[tech] = true;
             self.research.current = None;
             self.research.progress = 0;
+            self.reset_labs(Some(tech));
             self.events.push(format!("Research complete: {}", TECHS[tech].name));
             self.sounds.push(Sfx::Research);
+        }
+    }
+
+    /// Returns each mid-unit lab's consumed vials to its input and resets it.
+    /// `tech` is the research those vials belonged to; `None` resets without
+    /// a refund, for labs left dangling with no active research.
+    fn reset_labs(&mut self, tech: Option<usize>) {
+        for e in self.entities.iter_mut().flatten() {
+            if let State::Lab { input, progress } = &mut e.state
+                && *progress > 0.0
+            {
+                if let Some(t) = tech {
+                    for &s in TECHS[t].science {
+                        input.add(s, 1);
+                    }
+                }
+                *progress = 0.0;
+            }
         }
     }
 
@@ -134,14 +153,12 @@ impl World {
 
     pub fn set_research(&mut self, tech: usize) {
         if self.tech_available(tech) && self.research.current != Some(tech) {
+            let old = self.research.current;
             self.research.current = Some(tech);
             self.research.progress = 0;
-            // Labs mid-unit restart on the new technology.
-            for e in self.entities.iter_mut().flatten() {
-                if let State::Lab { progress, .. } = &mut e.state {
-                    *progress = 0.0;
-                }
-            }
+            // Labs mid-unit restart on the new technology, refunding the vials
+            // they already consumed for the old one.
+            self.reset_labs(old);
         }
     }
 
@@ -172,13 +189,46 @@ impl World {
     /// Sets a machine's recipe, returning its old contents to the player.
     pub fn set_recipe(&mut self, id: usize, recipe: usize) {
         let refund = self.contents(id);
+        let (kind, old_recipe, fluid_in, fluid_out) = {
+            let e = self.entity(id);
+            let State::Crafter(c) = &e.state else {
+                return;
+            };
+            if c.recipe == Some(recipe) {
+                return;
+            }
+            (e.kind, c.recipe, c.fluid_in, c.fluid_out)
+        };
+        let new = &RECIPES[recipe];
+        let old_in = old_recipe.and_then(|r| RECIPES[r].fluid_in.map(|(f, _)| f));
+        let old_out = old_recipe.and_then(|r| RECIPES[r].fluid_out.map(|(f, _)| f));
+        let keep_in = old_in == new.fluid_in.map(|(f, _)| f);
+        let keep_out = old_out == new.fluid_out.map(|(f, _)| f);
+        let name = kind.name();
+
+        // Fluids that the new recipe can't use are emptied with a note.
+        if !keep_in
+            && let Some(f) = old_in
+            && fluid_in > 0.0
+        {
+            self.events.push(format!("Emptied {:.0} {} from {}", fluid_in, f.short_name(), name));
+        }
+        if !keep_out
+            && let Some(f) = old_out
+            && fluid_out > 0.0
+        {
+            self.events.push(format!("Emptied {:.0} {} from {}", fluid_out, f.short_name(), name));
+        }
+
         let State::Crafter(c) = &mut self.entity_mut(id).state else {
             return;
         };
-        if c.recipe == Some(recipe) {
-            return;
-        }
-        *c = Crafter { recipe: Some(recipe), ..Default::default() };
+        *c = Crafter {
+            recipe: Some(recipe),
+            fluid_in: if keep_in { fluid_in } else { 0.0 },
+            fluid_out: if keep_out { fluid_out } else { 0.0 },
+            ..Default::default()
+        };
         for (i, n) in refund.iter() {
             self.player.inv.add(i, n);
         }
