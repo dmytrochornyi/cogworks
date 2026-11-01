@@ -1,3 +1,5 @@
+use std::f32::consts::TAU;
+
 use serde::{Deserialize, Serialize};
 
 use super::*;

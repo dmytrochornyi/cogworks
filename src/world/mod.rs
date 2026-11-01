@@ -1,5 +1,7 @@
 mod combat;
+mod entity;
 mod fluids;
+mod generate;
 mod logistics;
 mod player;
 mod power;
@@ -7,12 +9,11 @@ mod production;
 #[cfg(test)]
 mod tests;
 
-use std::f32::consts::TAU;
-
 use macroquad::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use crate::items::*;
+use generate::Rng;
 pub use combat::{Enemy, Shot};
 pub use fluids::FluidNets;
 pub use player::{PLAYER_HP, Player};
@@ -395,118 +396,10 @@ pub struct World {
 }
 
 impl World {
-    pub fn new(seed: u64) -> Self {
-        let n = (MAP_W * MAP_H) as usize;
-        let spawn = vec2(MAP_W as f32 / 2.0, MAP_H as f32 / 2.0);
-        let mut w = World {
-            res: vec![None; n],
-            grid: vec![None; n],
-            entities: Vec::new(),
-            free: Vec::new(),
-            player: Player::new(spawn),
-            research: Research { current: None, progress: 0, done: vec![false; TECHS.len()] },
-            enemies: Vec::new(),
-            pollution: vec![0.0; combat::chunk_count()],
-            evolution: 0.0,
-            peaceful: false,
-            time: 0.0,
-            won: false,
-            spawn,
-            pollution_timer: 0.0,
-            rng: Rng(seed.rotate_left(17) | 1),
-            events: Vec::new(),
-            sounds: Vec::new(),
-            power: Power::default(),
-            fluids: FluidNets::default(),
-            shots: Vec::new(),
-        };
-        w.generate(seed);
-        w
-    }
-
     /// Restores derived state after deserializing.
     pub fn after_load(&mut self) {
         self.power.dirty = true;
         self.fluids.dirty = true;
-    }
-
-    fn generate(&mut self, seed: u64) {
-        let mut rng = Rng(seed | 1);
-        let center = self.spawn;
-        let ores = [
-            Resource::Ore(Item::IronOre),
-            Resource::Ore(Item::CopperOre),
-            Resource::Ore(Item::Coal),
-            Resource::Ore(Item::Stone),
-            Resource::Ore(Item::Quartz),
-            Resource::Tar,
-        ];
-
-        for _ in 0..170 {
-            let c = vec2(rng.range(4.0, MAP_W as f32 - 4.0), rng.range(4.0, MAP_H as f32 - 4.0));
-            if c.distance(center) < 30.0 {
-                continue;
-            }
-            let res = ores[(rng.next() % ores.len() as u64) as usize];
-            let r = if res == Resource::Tar { rng.range(1.5, 3.0) } else { rng.range(3.0, 9.0) };
-            self.blob(&mut rng, c, r, res);
-        }
-        // Starter patches: the four basics close by, quartz and tar a short walk away.
-        let base = rng.range(0.0, TAU);
-        for (k, &res) in ores.iter().enumerate() {
-            let (a, dist, r) = if k < 4 {
-                (base + k as f32 * TAU / 4.0 + rng.range(-0.3, 0.3), rng.range(11.0, 16.0), 5.0)
-            } else {
-                (base + TAU / 8.0 + (k - 4) as f32 * TAU / 2.0, rng.range(28.0, 36.0), 3.5)
-            };
-            let c = center + vec2(a.cos(), a.sin()) * dist;
-            self.blob(&mut rng, c, r, res);
-        }
-        // Keep the landing spot clear.
-        for y in -3..=3 {
-            for x in -3..=3 {
-                let p = center.as_ivec2() + ivec2(x, y);
-                self.res[idx(p)] = None;
-            }
-        }
-        // Hive clusters, far from spawn.
-        let mut placed = 0;
-        let mut attempts = 0;
-        while placed < 30 && attempts < 2000 {
-            attempts += 1;
-            let c = vec2(rng.range(6.0, MAP_W as f32 - 6.0), rng.range(6.0, MAP_H as f32 - 6.0));
-            if c.distance(center) < 75.0 {
-                continue;
-            }
-            let count = 1 + rng.next() % 3;
-            for _ in 0..count {
-                let p = (c + vec2(rng.range(-6.0, 6.0), rng.range(-6.0, 6.0))).as_ivec2();
-                if self.footprint_free(Kind::Hive, p, Dir::N) {
-                    self.spawn_entity(Kind::Hive, p, Dir::N);
-                }
-            }
-            placed += 1;
-        }
-    }
-
-    fn blob(&mut self, rng: &mut Rng, c: Vec2, r: f32, res: Resource) {
-        let (p1, p2) = (rng.range(0.0, TAU), rng.range(0.0, TAU));
-        let ext = (r * 1.4).ceil() as i32;
-        let ci = c.as_ivec2();
-        for y in ci.y - ext..=ci.y + ext {
-            for x in ci.x - ext..=ci.x + ext {
-                let p = ivec2(x, y);
-                if !in_bounds(p) {
-                    continue;
-                }
-                let d = p.as_vec2() + vec2(0.5, 0.5) - c;
-                let a = d.y.atan2(d.x);
-                let edge = r * (1.0 + 0.22 * (3.0 * a + p1).sin() + 0.12 * (5.0 * a + p2).sin());
-                if d.length() < edge {
-                    self.res[idx(p)] = Some(res);
-                }
-            }
-        }
     }
 
     pub fn res_at(&self, p: IVec2) -> Option<Resource> {
@@ -517,90 +410,6 @@ impl World {
         match self.res_at(p) {
             Some(Resource::Ore(i)) => Some(i),
             _ => None,
-        }
-    }
-
-    pub fn entity_at(&self, p: IVec2) -> Option<usize> {
-        if in_bounds(p) { self.grid[idx(p)] } else { None }
-    }
-
-    pub fn entity(&self, id: usize) -> &Entity {
-        self.entities[id].as_ref().expect("dangling entity id")
-    }
-
-    pub fn entity_mut(&mut self, id: usize) -> &mut Entity {
-        self.entities[id].as_mut().expect("dangling entity id")
-    }
-
-    pub fn entity_ref_at(&self, p: IVec2) -> Option<&Entity> {
-        self.entity_at(p).map(|id| self.entity(id))
-    }
-
-    fn footprint_free(&self, kind: Kind, pos: IVec2, dir: Dir) -> bool {
-        footprint(kind, pos, dir).all(|p| in_bounds(p) && self.grid[idx(p)].is_none())
-    }
-
-    fn spawn_entity(&mut self, kind: Kind, pos: IVec2, dir: Dir) -> usize {
-        let state = match kind {
-            Kind::Belt | Kind::Tunnel => State::Belt(BeltState { len: 1.0, ..Default::default() }),
-            Kind::Splitter => State::Splitter { lanes: Default::default(), toggle: [false; 2] },
-            Kind::Arm => State::Arm { held: None, swing: 0.0 },
-            Kind::Chest => State::Chest { stock: Stock::default() },
-            Kind::Drill => State::Drill { timer: 0.0, out: Vec::new(), cursor: 0 },
-            Kind::Smelter | Kind::Assembler | Kind::Refinery | Kind::Mixer => {
-                State::Crafter(Crafter::default())
-            }
-            Kind::Lab => State::Lab { input: Stock::default(), progress: 0.0 },
-            Kind::Generator => State::Generator { fuel: Stock::default(), energy: 0.0, load: 0.0 },
-            Kind::Pole => State::Pole,
-            Kind::Solar => State::Solar,
-            Kind::Wall => State::Wall,
-            Kind::Pipe => State::Pipe { fluid: None, amount: 0.0 },
-            Kind::Wellhead => State::Wellhead { amount: 0.0 },
-            Kind::Sentry => State::Sentry {
-                ammo: Stock::default(),
-                shots: 0,
-                dmg: 0.0,
-                cooldown: 0.0,
-                aim: 0.0,
-            },
-            Kind::GrandEngine => State::Engine { cores: 0 },
-            Kind::Hive => State::Hive { agitation: 0.0, cooldown: 0.0, guard_cd: 0.0 },
-        };
-        let e = Entity {
-            kind,
-            pos,
-            dir,
-            hp: kind.max_hp(),
-            calm: 100.0,
-            active: false,
-            state,
-            net: None,
-            fnet: None,
-        };
-        let id = match self.free.pop() {
-            Some(id) => {
-                self.entities[id] = Some(e);
-                id
-            }
-            None => {
-                self.entities.push(Some(e));
-                self.entities.len() - 1
-            }
-        };
-        for p in footprint(kind, pos, dir) {
-            self.grid[idx(p)] = Some(id);
-        }
-        self.mark_dirty(kind);
-        id
-    }
-
-    fn mark_dirty(&mut self, kind: Kind) {
-        if kind.draw_kw() > 0.0 || matches!(kind, Kind::Pole | Kind::Generator | Kind::Solar) {
-            self.power.dirty = true;
-        }
-        if kind == Kind::Pipe || kind.has_fluid_in() || kind.has_fluid_out() {
-            self.fluids.dirty = true;
         }
     }
 
@@ -618,119 +427,6 @@ impl World {
             .iter()
             .zip(&self.research.done)
             .any(|(t, &done)| done && t.bonus == Some(bonus))
-    }
-
-    /// Whether `kind` can go at `pos` right now. Doesn't check the player's inventory.
-    pub fn check_place(&self, kind: Kind, pos: IVec2, dir: Dir) -> Result<(), String> {
-        if !self.footprint_free(kind, pos, dir) {
-            return Err("Space is occupied".into());
-        }
-        let tiles: Vec<IVec2> = footprint(kind, pos, dir).collect();
-        if kind == Kind::Drill && !tiles.iter().any(|&p| self.ore_at(p).is_some()) {
-            return Err("Drills must be placed over ore".into());
-        }
-        if kind == Kind::Wellhead && !tiles.iter().any(|&p| self.res_at(p) == Some(Resource::Tar)) {
-            return Err("Wellheads must be placed over a tar seep".into());
-        }
-        if kind.solid() && self.player.alive() {
-            let (lo, hi) = self.player.bounds();
-            let (tlo, thi) = (pos.as_vec2(), (pos + dims(kind, dir)).as_vec2());
-            if lo.x < thi.x && hi.x > tlo.x && lo.y < thi.y && hi.y > tlo.y {
-                return Err("You're standing in the way".into());
-            }
-        }
-        Ok(())
-    }
-
-    /// Places a building from the player's inventory.
-    pub fn place(&mut self, kind: Kind, pos: IVec2, dir: Dir) -> Result<(), String> {
-        let item = kind.item().ok_or("Can't build that")?;
-        if self.player.inv.get(item) == 0 {
-            return Err(format!("Out of {}", item.name()));
-        }
-        self.check_place(kind, pos, dir)?;
-        self.player.inv.take(item, 1);
-        let id = self.spawn_entity(kind, pos, dir);
-        self.sounds.push(Sfx::Place);
-        if kind == Kind::Tunnel {
-            self.pair_tunnel(id);
-        }
-        Ok(())
-    }
-
-    /// Picks up the building at `pos` into the player's inventory, along with its contents.
-    pub fn deconstruct(&mut self, pos: IVec2) -> Option<Kind> {
-        let id = self.entity_at(pos)?;
-        let kind = self.entity(id).kind;
-        let item = kind.item()?;
-        let contents = self.contents(id);
-        for (i, n) in contents.iter() {
-            self.player.inv.add(i, n);
-        }
-        self.player.inv.add(item, 1);
-        self.delete(id);
-        self.sounds.push(Sfx::Pickup);
-        Some(kind)
-    }
-
-    /// Every item held inside an entity.
-    pub fn contents(&self, id: usize) -> Stock {
-        let mut s = Stock::default();
-        match &self.entity(id).state {
-            State::Belt(b) => b.lanes.iter().flatten().for_each(|(i, _)| s.add(*i, 1)),
-            State::Splitter { lanes, .. } => lanes.iter().flatten().for_each(|i| s.add(*i, 1)),
-            State::Arm { held: Some(i), .. } => s.add(*i, 1),
-            State::Chest { stock } => s = stock.clone(),
-            State::Drill { out, .. } => out.iter().for_each(|i| s.add(*i, 1)),
-            State::Crafter(c) => {
-                for (i, n) in c.input.iter().chain(c.out.iter()) {
-                    s.add(i, n);
-                }
-            }
-            State::Lab { input, .. } => s = input.clone(),
-            State::Generator { fuel, .. } => s = fuel.clone(),
-            State::Sentry { ammo, .. } => s = ammo.clone(),
-            _ => {}
-        }
-        s
-    }
-
-    /// Removes an entity without refunding anything.
-    pub fn delete(&mut self, id: usize) {
-        let Some(e) = self.entities[id].take() else {
-            return;
-        };
-        for p in e.tiles() {
-            self.grid[idx(p)] = None;
-        }
-        self.free.push(id);
-        self.mark_dirty(e.kind);
-        if let State::Belt(BeltState { partner: Some(other), .. }) = e.state {
-            self.unpair_tunnel(other);
-        }
-    }
-
-    pub fn rotate(&mut self, pos: IVec2, cw: bool) {
-        let Some(id) = self.entity_at(pos) else {
-            return;
-        };
-        let e = self.entity_mut(id);
-        if !e.kind.rotatable() {
-            return;
-        }
-        // Only square buildings rotate in place.
-        e.dir = if cw { e.dir.cw() } else { e.dir.ccw() };
-        let kind = e.kind;
-        self.mark_dirty(kind);
-    }
-
-    pub fn set_dir(&mut self, pos: IVec2, dir: Dir) {
-        if let Some(id) = self.entity_at(pos) {
-            let e = self.entity_mut(id);
-            if e.kind == Kind::Belt {
-                e.dir = dir;
-            }
-        }
     }
 
     pub fn update(&mut self, dt: f32) {
@@ -924,23 +620,5 @@ pub fn edge_tile(pos: IVec2, dims: IVec2, dir: Dir) -> IVec2 {
         Dir::S => ivec2(c.x, pos.y + dims.y),
         Dir::E => ivec2(pos.x + dims.x, c.y),
         Dir::W => ivec2(pos.x - 1, c.y),
-    }
-}
-
-/// xorshift64* — small deterministic RNG.
-#[derive(Clone, Serialize, Deserialize)]
-pub struct Rng(pub u64);
-
-impl Rng {
-    pub fn next(&mut self) -> u64 {
-        self.0 ^= self.0 >> 12;
-        self.0 ^= self.0 << 25;
-        self.0 ^= self.0 >> 27;
-        self.0.wrapping_mul(0x2545_F491_4F6C_DD1D)
-    }
-
-    pub fn range(&mut self, lo: f32, hi: f32) -> f32 {
-        let f = (self.next() >> 40) as f32 / (1u64 << 24) as f32;
-        lo + (hi - lo) * f
     }
 }
