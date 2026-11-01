@@ -372,4 +372,10 @@ Spec "Revision" item 7. Everything is slow and smooth, never flickery.
 - [ ] **Step 4:** Fix these known issues from the reviewer's Task 4 screenshots:
   - Slot item counts (`slot()` in `src/ui.rs`) are drawn in dark ink directly over the icon and are hard to read. Put each count on a small `BG` paper badge (rounded, `radius::SM`) at the slot's bottom-right.
   - Research card unlock text (light teal) has weak contrast on cream. Use a darker verdigris token with `contrast(_, BG2) >= 4.5`, and add that assertion to `ui_text_contrast_is_readable`.
+  - The Task 5c mood tint is too strong. In the reviewer's screenshots:
+    - golden hour turns everything orange-brown
+    - at dusk, ores and the player read magenta-pink
+    - the lamp pool reads whitish pink instead of warm peach
+    
+    Reduce the tint strength by about 35%, and scale the tint by `(1 - light_luminance)` in `COMPOSITE` so lamp-lit areas stay peach. Keep some green in the grass at golden hour (green channel ≥ 0.75 × red on `MEADOW_400`). Mirror the change in `theme::grade()`. The existing sky tests must still pass.
 - [ ] **Step 5:** Fix anything else that fails, then commit: `chore: lantern-dusk redesign polish`.
