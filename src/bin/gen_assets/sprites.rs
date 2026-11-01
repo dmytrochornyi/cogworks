@@ -493,19 +493,121 @@ pub fn port(input: bool) -> Canvas {
 
 // ---------------------------------------------------------------- production
 
+/// A curved market-stall roof painted over a block's top face `(x, y, w, th)`:
+/// soft lacquer rose with a verdigris ridge cap, eave trim and bowed ribs.
+fn roof(cv: &mut Canvas, x: f32, y: f32, w: f32, th: f32, r: f32) {
+    cv.shape(
+        move |p| rbox(p, x, y, w, th, r),
+        move |p| {
+            let t = ((p.y - y) / th).clamp(0.0, 1.0);
+            mix(ROOF_LIGHT, ROOF, t * 0.9)
+        },
+        OW,
+    );
+    // Soft dome highlight along the ridge.
+    cv.fill(
+        move |p| rbox(p, x + 9.0, y + 3.0, w - 18.0, 5.0, 2.5),
+        move |_| with_alpha(ROOF_LIGHT, 0.45),
+    );
+    // Verdigris ridge cap.
+    cv.solid(move |p| rbox(p, x + 3.0, y + 1.0, w - 6.0, 4.0, 2.0), TRIM, 1.2);
+    // Verdigris eave trim along the lower edge.
+    cv.solid(move |p| rbox(p, x + OW * 0.4, y + th - 5.5, w - OW * 0.8, 3.6, 1.8), TRIM_DARK, 1.0);
+    // Bowed ribs: the centre rib is straight, outer ribs lean toward the eaves.
+    let n = ((w / 26.0).round() as i32).clamp(4, 7);
+    for k in 1..n {
+        let u = k as f32 / n as f32;
+        let rx = x + w * u;
+        let bow = (1.0 - (u - 0.5).abs() * 2.0) * 2.5;
+        cv.fill(
+            move |p| capsule(p, v(rx, y + 8.0), v(rx + bow, y + th - 7.0), 0.8),
+            move |_| with_alpha(ROOF_SHADE, 0.3),
+        );
+    }
+}
+
+/// Warm wood planks over a front wall band.
+fn planks(cv: &mut Canvas, x: f32, y: f32, w: f32, h: f32, r: f32) {
+    cv.fill(
+        move |p| rbox(p, x, y, w, h, r),
+        move |p| {
+            let row = ((p.y - y) / 8.0).floor();
+            let fy = ((p.y - y) / 8.0).rem_euclid(1.0);
+            let fx = ((p.x + row * 13.0) / 19.0).rem_euclid(1.0);
+            let base = mix(WOOD, WOOD_DARK, fy * 0.6);
+            if fy < 0.12 || fx < 0.06 { mix(base, BROWN_D, 0.45) } else { base }
+        },
+    );
+}
+
+/// A small brass steam vent: an open dark mouth at `c` (the steam origin) with
+/// a brass collar below it. `c` matches a `VENTS` entry in `src/render.rs`.
+fn vent(cv: &mut Canvas, c: Vec2) {
+    cv.solid(move |p| ellipse(p, c + v(0.0, 2.0), v(5.0, 2.0)), TRIM_DARK, 1.0);
+    cv.solid(move |p| rbox(p, c.x - 3.5, c.y, 7.0, 6.0, 2.0), BRASS, 1.2);
+    cv.fill(move |p| ellipse(p, c, v(3.5, 1.6)), |_| with_alpha(INK, 0.85));
+}
+
+/// A warm glowing window (or porthole) framed in brass, at `c`.
+fn window_glow(cv: &mut Canvas, c: Vec2, r: Vec2) {
+    cv.solid(move |p| ellipse(p, c, r), BRASS, 1.2);
+    cv.shape(
+        move |p| ellipse(p, c, r * 0.82),
+        move |p| {
+            let t = ((p.y - c.y + r.y) / (2.0 * r.y)).clamp(0.0, 1.0);
+            mix(LAMP_INNER, LAMP, t)
+        },
+        1.0,
+    );
+    cv.fill(move |p| rbox(p, c.x - r.x * 0.8, c.y - 0.6, r.x * 1.6, 1.2, 0.6), |_| with_alpha(BROWN_D, 0.6));
+    cv.fill(move |p| rbox(p, c.x - 0.6, c.y - r.y * 0.8, 1.2, r.y * 1.6, 0.6), |_| with_alpha(BROWN_D, 0.6));
+}
+
+/// A brass pipe run with flanged joints.
+fn brass_pipe(cv: &mut Canvas, a: Vec2, b: Vec2, r: f32) {
+    cv.shape(
+        move |p| capsule(p, a, b, r),
+        move |p| mix(lit(BRASS, 1.12), lit(BRASS, 0.7), (p.y - a.y) / (b.y - a.y).abs().max(1.0)),
+        1.2,
+    );
+    for t in [0.25, 0.5, 0.75] {
+        let c = a.lerp(b, t);
+        cv.solid(move |p| circle(p, c, r * 1.3), TRIM_DARK, 1.0);
+    }
+}
+
+/// A copper pipe run with riveted flanges.
+fn copper_pipe(cv: &mut Canvas, a: Vec2, b: Vec2, r: f32) {
+    cv.shape(
+        move |p| capsule(p, a, b, r),
+        move |p| mix(lit(COPPER, 1.1), lit(COPPER, 0.65), (p.y - a.y) / (b.y - a.y).abs().max(1.0)),
+        1.2,
+    );
+    for t in [0.3, 0.7] {
+        let c = a.lerp(b, t);
+        cv.solid(move |p| circle(p, c, r * 1.3), TRIM_DARK, 1.0);
+    }
+}
+
 pub fn drill() -> Canvas {
     let mut cv = Canvas::new(128, 128);
-    let (x, y, w, h) = block(&mut cv, 6.0, 8.0, 116.0, 112.0, 16.0, 14.0, MUSTARD, side_of(MUSTARD));
-    let c = v(x + w / 2.0, y + h / 2.0);
-    cv.solid(move |p| circle(p, c, 34.0), DRILL_HOLE, OW);
-    cv.solid(move |p| circle(p, c, 27.0), PIT, 1.5);
-    for (cx, cy) in [(x + 12.0, y + 12.0), (x + w - 12.0, y + 12.0), (x + 12.0, y + h - 12.0), (x + w - 12.0, y + h - 12.0)] {
+    let (x, y, w, th) = block(&mut cv, 6.0, 8.0, 116.0, 112.0, 16.0, 14.0, PAPER, side_of(WOOD));
+    roof(&mut cv, x, y, w, th, 14.0);
+    planks(&mut cv, x + 3.0, y + th + 1.0, w - 6.0, 14.0, 5.0);
+    let c = v(x + w / 2.0, y + th / 2.0);
+    // Brass collar and dark bore around the drill bit (bit overlay at 64,56).
+    cv.solid(move |p| circle(p, c, 34.0), BRASS, OW);
+    cv.solid(move |p| circle(p, c, 28.0), DRILL_HOLE, OW);
+    cv.solid(move |p| circle(p, c, 21.0), PIT, 1.5);
+    for (cx, cy) in [(x + 12.0, y + 12.0), (x + w - 12.0, y + 12.0), (x + 12.0, y + th - 12.0), (x + w - 12.0, y + th - 12.0)] {
         rivet(&mut cv, v(cx, cy), 3.5);
     }
-    // Hazard stripes along the front wall.
-    cv.fill(move |p| rbox(p, x + 14.0, y + h + 4.0, w - 28.0, 6.0, 2.0), |p| {
-        if ((p.x + p.y) / 8.0).rem_euclid(1.0) < 0.5 { CHAR } else { HONEY }
-    });
+    // Copper feed pipe down the right side.
+    copper_pipe(&mut cv, v(x + w - 12.0, y + 16.0), v(x + w - 12.0, y + th - 8.0), 4.0);
+    // A warm furnace mouth under the eave, on the front wall.
+    window_glow(&mut cv, v(x + 26.0, y + th + 9.0), v(10.0, 6.5));
+    // Steam vent on the roof.
+    vent(&mut cv, v(x + w - 26.0, y + 14.0));
     cv
 }
 
@@ -531,41 +633,53 @@ pub fn chute() -> Canvas {
 
 pub fn smelter() -> Canvas {
     let mut cv = Canvas::new(128, 128);
-    let (x, y, w, h) = block(&mut cv, 6.0, 22.0, 116.0, 100.0, 22.0, 12.0, TERRA, RUST);
-    // Brick courses on the top and the front wall.
-    cv.fill(move |p| rbox(p, x + 4.0, y + 4.0, w - 8.0, h + 14.0, 8.0), move |p| {
-        let row = ((p.y - y) / 11.0).floor();
-        let fy = ((p.y - y) / 11.0).rem_euclid(1.0);
-        let fx = ((p.x + row * 9.0) / 18.0).rem_euclid(1.0);
-        if fy < 0.1 || fx < 0.06 { with_alpha(INK, 0.22) } else { with_alpha(INK, 0.0) }
-    });
-    // Arched firebox mouth on the front wall.
-    cv.solid(move |p| rbox(p, 42.0, y + h - 8.0, 44.0, 30.0, 12.0), FIREBOX, OW);
+    let (x, y, w, th) = block(&mut cv, 6.0, 22.0, 116.0, 100.0, 22.0, 12.0, PAPER, side_of(WOOD));
+    roof(&mut cv, x, y, w, th, 12.0);
+    planks(&mut cv, x + 3.0, y + th + 1.0, w - 6.0, 20.0, 6.0);
+    // Copper pipe run along the front wall.
+    copper_pipe(&mut cv, v(x + 12.0, y + th + 9.0), v(x + w - 12.0, y + th + 9.0), 3.0);
+    // Arched furnace mouth with a glowing core at the light coordinate (64,104).
+    cv.solid(move |p| rbox(p, 46.0, 94.0, 36.0, 26.0, 13.0), BRASS, OW);
+    cv.fill(move |p| rbox(p, 50.0, 98.0, 28.0, 20.0, 10.0), |_| FIREBOX);
+    cv.shape(move |p| ellipse(p, v(64.0, 104.0), v(11.0, 7.5)), move |p| {
+        let t = ((p.x - 64.0) / 11.0).abs().min(1.0);
+        mix(LAMP_INNER, LAMP, t)
+    }, 1.2);
     for k in 0..3 {
-        let bx = 52.0 + k as f32 * 12.0;
-        cv.fill(move |p| rbox(p, bx, y + h + 6.0, 3.0, 14.0, 1.0), |_| BROWN_D);
+        let bx = 55.0 + k as f32 * 9.0;
+        cv.fill(move |p| rbox(p, bx, 92.0, 3.0, 6.0, 1.0), |_| BROWN_D);
     }
-    // Chimney.
-    cv.shadow(|p| rbox(p, 86.0, 2.0, 22.0, 40.0, 4.0), v(4.0, 4.0), 4.0, 0.3);
-    cv.shape(|p| rbox(p, 86.0, 6.0, 22.0, 36.0, 4.0), |p| mix(PEACH, RUST, (p.x - 86.0) / 22.0), OW);
-    cv.solid(|p| rbox(p, 83.0, 2.0, 28.0, 8.0, 3.0), BROWN_D, OW);
+    // Chimney with a brass steam vent at the top.
+    cv.shadow(|p| rbox(p, 88.0, 4.0, 18.0, 34.0, 4.0), v(4.0, 4.0), 4.0, 0.3);
+    cv.shape(|p| rbox(p, 88.0, 6.0, 18.0, 30.0, 4.0), |p| mix(WOOD_DARK, BROWN_D, (p.x - 88.0) / 18.0), OW);
+    vent(&mut cv, v(97.0, 6.0));
     cv
 }
 
 pub fn assembler() -> Canvas {
     let mut cv = Canvas::new(192, 192);
-    let (x, y, w, h) = block(&mut cv, 8.0, 10.0, 176.0, 174.0, 22.0, 16.0, TEAL, TEAL_D);
-    let c = v(x + w / 2.0, y + h / 2.0);
-    cv.shape(move |p| rrect(p, c, v(52.0, 46.0), 14.0), |p| mix(VENT_HI, VENT_LO, p.y / 192.0), OW);
-    cv.fill(move |p| rrect(p, c - v(30.0, 30.0), v(14.0, 3.0), 3.0), |_| with_alpha(WHITE, 0.15));
+    let (x, y, w, th) = block(&mut cv, 8.0, 10.0, 176.0, 174.0, 22.0, 16.0, PAPER, side_of(WOOD));
+    roof(&mut cv, x, y, w, th, 16.0);
+    planks(&mut cv, x + 4.0, y + th + 1.0, w - 8.0, 19.0, 7.0);
+    let c = v(x + w / 2.0, y + th / 2.0);
+    // Glowing glass skylight at the light coordinate (96,86); the gear overlay
+    // spins on top of it.
+    cv.solid(move |p| rrect(p, c, v(52.0, 46.0), 14.0), BRASS, OW);
+    cv.shape(move |p| rrect(p, c, v(46.0, 40.0), 11.0), move |p| {
+        let t = ((p.y - c.y + 40.0) / 80.0).clamp(0.0, 1.0);
+        mix(LAMP_INNER, LAMP, t)
+    }, 1.4);
+    cv.fill(move |p| rrect(p, c - v(24.0, 24.0), v(12.0, 3.0), 2.0), |_| with_alpha(WHITE, 0.4));
+    // Corner rivets on the roof.
     for (dx, dy) in [(-72.0, -62.0), (72.0, -62.0), (-72.0, 62.0), (72.0, 62.0)] {
         rivet(&mut cv, c + v(dx, dy), 4.0);
     }
-    for k in 0..5 {
-        let vx = x + 30.0 + k as f32 * 26.0;
-        cv.fill(move |p| rbox(p, vx, y + h + 6.0, 16.0, 4.0, 2.0), |_| with_alpha(INK, 0.5));
-    }
-    cv.solid(move |p| circle(p, v(x + w - 18.0, y + h + 10.0), 4.0), HONEY, 1.5);
+    // Brass pipe runs along the roof edges.
+    brass_pipe(&mut cv, v(x + 20.0, y + 18.0), v(x + w - 20.0, y + 18.0), 3.5);
+    copper_pipe(&mut cv, v(x + 20.0, y + th - 8.0), v(x + w - 20.0, y + th - 8.0), 3.5);
+    // A small warm window on the front wall.
+    window_glow(&mut cv, v(c.x, y + th + 10.0), v(11.0, 6.0));
+    vent(&mut cv, v(x + w - 30.0, y + 14.0));
     cv
 }
 
@@ -585,16 +699,30 @@ pub fn gear_overlay(size: usize, teeth: u32, col: C) -> Canvas {
 
 pub fn lab() -> Canvas {
     let mut cv = Canvas::new(192, 192);
-    let (x, y, w, h) = block(&mut cv, 8.0, 12.0, 176.0, 172.0, 22.0, 26.0, PAPER, BROWN);
-    let c = v(x + w / 2.0, y + h / 2.0);
+    let (x, y, w, th) = block(&mut cv, 8.0, 12.0, 176.0, 172.0, 22.0, 26.0, PAPER, side_of(WOOD));
+    roof(&mut cv, x, y, w, th, 26.0);
+    planks(&mut cv, x + 4.0, y + th + 1.0, w - 8.0, 19.0, 8.0);
+    let c = v(x + w / 2.0, y + th / 2.0);
+    // Brass struts framing the glass dome.
     for k in 0..4 {
         let a = k as f32 * TAU / 4.0 + PI / 4.0;
         let o = c + Vec2::from_angle(a) * 62.0;
-        cv.solid(move |p| capsule(p, c, o, 6.0), MUSTARD, 2.0);
+        cv.solid(move |p| capsule(p, c, o, 5.0), BRASS, 2.0);
     }
-    cv.solid(move |p| circle(p, c, 50.0), BROWN_D, OW);
+    // Glass oculus with a glowing orb at the light coordinate (96,87).
+    cv.solid(move |p| circle(p, c, 50.0), TRIM_DARK, OW);
     cv.shape(move |p| circle(p, c, 44.0), move |p| mix(GLASS_HI, SKY, (p.y - c.y + 44.0) / 88.0), OW);
+    cv.shape(move |p| circle(p, c, 30.0), move |p| {
+        let t = ((p.x - c.x) / 30.0).abs().min(1.0);
+        mix(LAMP_INNER, LAMP, t)
+    }, 1.4);
     cv.fill(move |p| ellipse(p, c - v(16.0, 20.0), v(14.0, 7.0)), |_| with_alpha(WHITE, 0.5));
+    // Corner rivets and a copper pipe along the eave.
+    for (dx, dy) in [(-76.0, -62.0), (76.0, -62.0), (-76.0, 62.0), (76.0, 62.0)] {
+        rivet(&mut cv, c + v(dx, dy), 3.5);
+    }
+    copper_pipe(&mut cv, v(x + 24.0, y + th - 10.0), v(x + w - 24.0, y + th - 10.0), 3.5);
+    vent(&mut cv, v(x + w - 34.0, y + 20.0));
     cv
 }
 
@@ -611,16 +739,26 @@ pub fn orb(size: usize, core: C, edge: C) -> Canvas {
 
 pub fn generator() -> Canvas {
     let mut cv = Canvas::new(128, 128);
-    let (x, y, w, h) = block(&mut cv, 6.0, 12.0, 116.0, 108.0, 18.0, 12.0, BROWN, side_of(BROWN));
-    let c = v(x + w / 2.0 + 10.0, y + h / 2.0 + 4.0);
-    cv.solid(move |p| circle(p, c, 32.0), PIT, OW);
-    // Boiler drum along the top edge.
-    cv.shape(move |p| rbox(p, x + 8.0, y + 6.0, 34.0, 70.0, 16.0), |p| mix(PEACH, TERRA, (p.x - 14.0) / 34.0), OW);
+    let (x, y, w, th) = block(&mut cv, 6.0, 12.0, 116.0, 108.0, 18.0, 12.0, PAPER, side_of(WOOD));
+    roof(&mut cv, x, y, w, th, 12.0);
+    planks(&mut cv, x + 3.0, y + th + 1.0, w - 6.0, 16.0, 6.0);
+    let c = v(x + w / 2.0 + 10.0, y + th / 2.0 + 4.0);
+    // Boiler drum: a brass cylinder with verdigris bands.
+    cv.shape(move |p| rbox(p, x + 8.0, y + 6.0, 34.0, 70.0, 16.0), |p| mix(lit(BRASS, 1.1), lit(BRASS, 0.6), (p.x - 14.0) / 34.0), OW);
     for k in 0..3 {
         let by = y + 20.0 + k as f32 * 20.0;
-        cv.fill(move |p| rbox(p, x + 8.0, by, 34.0, 3.0, 1.0), |_| with_alpha(INK, 0.6));
+        cv.fill(move |p| rbox(p, x + 8.0, by, 34.0, 3.0, 1.0), |_| with_alpha(TRIM_DARK, 0.7));
     }
-    cv.solid(move |p| circle(p, v(x + 25.0, y + h - 14.0), 6.0), STEEL_D, 2.0);
+    // Glowing round sight-glass on the roof, at the wheel/light coordinate (74,61).
+    cv.solid(move |p| circle(p, c, 30.0), TRIM_DARK, OW);
+    cv.shape(move |p| circle(p, c, 24.0), move |p| {
+        let t = ((p.y - c.y + 24.0) / 48.0).clamp(0.0, 1.0);
+        mix(LAMP_INNER, LAMP, t)
+    }, 1.4);
+    // Copper pipe along the front wall.
+    copper_pipe(&mut cv, v(x + 12.0, y + th + 8.0), v(x + w - 12.0, y + th + 8.0), 3.0);
+    // Steam vent at the top of the boiler drum.
+    vent(&mut cv, v(x + 25.0, y + 8.0));
     cv
 }
 
@@ -647,10 +785,24 @@ pub fn pole() -> Canvas {
     for x in [14.0, 50.0] {
         cv.solid(move |p| circle(p, v(x, 15.0), 3.0), CREAM, 1.2);
     }
-    // Hanging lantern.
-    cv.fill(|p| capsule(p, v(46.0, 23.0), v(46.0, 28.0), 0.8), |_| INK);
-    cv.solid(|p| rbox(p, 40.0, 26.0, 12.0, 4.0, 1.5), BROWN_D, 1.2);
-    cv.shape(|p| rbox(p, 41.0, 29.0, 10.0, 12.0, 3.0), |p| mix(LAMP_INNER, LAMP, (p.y - 29.0) / 12.0), 1.6);
+    // Hanging red paper lantern, oval and centred on `LANTERN` (46, 35).
+    cv.fill(|p| capsule(p, v(46.0, 20.0), v(46.0, 25.0), 0.9), |_| INK);
+    // Dark top and bottom caps.
+    cv.solid(|p| rbox(p, 38.5, 22.5, 15.0, 5.0, 2.5), BROWN_D, 1.2);
+    cv.solid(|p| rbox(p, 38.5, 44.0, 15.0, 5.0, 2.5), BROWN_D, 1.2);
+    // Oval lacquer body with a warm inner glow (LAMP_INNER centre -> LAMP edge).
+    cv.shape(|p| ellipse(p, v(46.0, 35.0), v(9.5, 12.0)), move |p| {
+        let edge = ((p.x - 46.0) / 9.5).abs().min(1.0);
+        let paper = mix(ROOF_LIGHT, ROOF_SHADE, ((p.y - 23.0) / 24.0).clamp(0.0, 1.0));
+        mix(paper, mix(LAMP_INNER, LAMP, edge), 0.55)
+    }, 1.6);
+    // Faint vertical ribs.
+    for k in [-2, -1, 0, 1, 2] {
+        let rx = 46.0 + k as f32 * 3.4;
+        cv.fill(move |p| capsule(p, v(rx, 30.0), v(rx, 40.0), 0.55), |_| with_alpha(LAMP, 0.4));
+    }
+    // Little tassel.
+    cv.fill(|p| capsule(p, v(46.0, 49.0), v(46.0, 52.0), 0.8), |_| INK);
     cv
 }
 
@@ -672,15 +824,27 @@ pub fn solar() -> Canvas {
 
 pub fn wellhead() -> Canvas {
     let mut cv = Canvas::new(128, 128);
-    let (x, y, w, h) = block(&mut cv, 6.0, 10.0, 116.0, 110.0, 14.0, 10.0, WELLHEAD_STONE, WELLHEAD_STONE_D);
-    let c = v(x + w / 2.0, y + h / 2.0);
-    cv.solid(move |p| circle(p, c + v(-26.0, 16.0), 14.0), WELLHEAD_DARK, OW);
-    cv.solid(move |p| circle(p, c + v(-26.0, 16.0), 7.0), BROWN_D, 1.5);
-    // A-frame supporting the beam pivot.
+    let (x, y, w, th) = block(&mut cv, 6.0, 10.0, 116.0, 110.0, 14.0, 10.0, PAPER, side_of(WOOD));
+    roof(&mut cv, x, y, w, th, 10.0);
+    planks(&mut cv, x + 3.0, y + th + 1.0, w - 6.0, 12.0, 5.0);
+    let c = v(x + w / 2.0, y + th / 2.0);
+    // Pump well opening on the roof.
+    cv.solid(move |p| circle(p, c + v(-26.0, 16.0), 14.0), BRASS, OW);
+    cv.solid(move |p| circle(p, c + v(-26.0, 16.0), 8.0), WELLHEAD_DARK, OW);
+    cv.solid(move |p| circle(p, c + v(-26.0, 16.0), 4.0), PIT, 1.2);
+    // Brass A-frame supporting the beam pivot at (78,52).
     for s in [-1.0, 1.0] {
         let foot = c + v(14.0 + s * 18.0, 30.0);
-        cv.solid(move |p| capsule(p, foot, c + v(14.0, -6.0), 4.0), RUST, 2.0);
+        cv.solid(move |p| capsule(p, foot, c + v(14.0, -6.0), 4.0), BRASS, 2.0);
     }
+    // Corner rivets and a copper pipe.
+    for (dx, dy) in [(x + 12.0, y + 12.0), (x + w - 12.0, y + 12.0), (x + 12.0, y + th - 12.0), (x + w - 12.0, y + th - 12.0)] {
+        rivet(&mut cv, v(dx, dy), 3.0);
+    }
+    copper_pipe(&mut cv, v(x + 16.0, y + 18.0), v(x + 16.0, y + th - 8.0), 3.5);
+    // A warm porthole on the front wall.
+    window_glow(&mut cv, v(c.x + 26.0, y + th + 7.0), v(9.0, 5.5));
+    vent(&mut cv, v(x + 40.0, y + 14.0));
     cv
 }
 
@@ -707,22 +871,51 @@ fn tank(cv: &mut Canvas, c: Vec2, r: f32, height: f32, col: C) {
 
 pub fn refinery() -> Canvas {
     let mut cv = Canvas::new(192, 192);
-    block(&mut cv, 8.0, 12.0, 176.0, 172.0, 16.0, 12.0, REFINERY_STONE, REFINERY_STONE_D);
-    cv.solid(|p| capsule(p, v(58.0, 110.0), v(140.0, 110.0), 6.0), STEEL, 2.0);
-    cv.solid(|p| capsule(p, v(58.0, 60.0), v(58.0, 140.0), 5.0), STEEL_D, 2.0);
-    tank(&mut cv, v(58.0, 40.0), 30.0, 70.0, PEACH);
-    tank(&mut cv, v(136.0, 54.0), 26.0, 56.0, TERRA);
-    tank(&mut cv, v(126.0, 122.0), 20.0, 36.0, MUSTARD);
+    let (x, y, w, th) = block(&mut cv, 8.0, 12.0, 176.0, 172.0, 16.0, 12.0, PAPER, side_of(WOOD));
+    roof(&mut cv, x, y, w, th, 12.0);
+    planks(&mut cv, x + 4.0, y + th + 1.0, w - 8.0, 14.0, 6.0);
+    // Brass pipe manifold between the tanks.
+    brass_pipe(&mut cv, v(58.0, 116.0), v(140.0, 116.0), 6.0);
+    brass_pipe(&mut cv, v(58.0, 66.0), v(58.0, 146.0), 5.0);
+    // Boiler-room tanks: brass, copper and lacquer.
+    tank(&mut cv, v(58.0, 40.0), 30.0, 70.0, BRASS);
+    tank(&mut cv, v(136.0, 54.0), 26.0, 56.0, COPPER);
+    tank(&mut cv, v(126.0, 122.0), 20.0, 36.0, ROOF);
+    // A glowing furnace mouth at the base of the front wall.
+    cv.solid(move |p| rbox(p, 40.0, y + th - 4.0, 34.0, 18.0, 9.0), BRASS, OW);
+    cv.fill(move |p| rbox(p, 44.0, y + th, 26.0, 12.0, 7.0), |_| FIREBOX);
+    cv.shape(move |p| ellipse(p, v(57.0, y + th + 6.0), v(9.0, 5.0)), move |p| {
+        let t = ((p.x - 57.0) / 9.0).abs().min(1.0);
+        mix(LAMP_INNER, LAMP, t)
+    }, 1.2);
+    // Corner rivets.
+    for (dx, dy) in [(x + 14.0, y + 14.0), (x + w - 14.0, y + 14.0), (x + 14.0, y + th - 14.0), (x + w - 14.0, y + th - 14.0)] {
+        rivet(&mut cv, v(dx, dy), 3.5);
+    }
+    // Steam vent at the top of the first tank (58,36).
+    vent(&mut cv, v(58.0, 36.0));
     cv
 }
 
 pub fn mixer() -> Canvas {
     let mut cv = Canvas::new(128, 128);
-    let (x, y, w, h) = block(&mut cv, 6.0, 10.0, 116.0, 110.0, 16.0, 14.0, SAGE, SAGE_D);
-    let c = v(x + w / 2.0, y + h / 2.0);
-    cv.solid(move |p| circle(p, c, 38.0), STEEL_D, OW);
+    let (x, y, w, th) = block(&mut cv, 6.0, 10.0, 116.0, 110.0, 16.0, 14.0, PAPER, side_of(WOOD));
+    roof(&mut cv, x, y, w, th, 14.0);
+    planks(&mut cv, x + 3.0, y + th + 1.0, w - 6.0, 14.0, 5.0);
+    let c = v(x + w / 2.0, y + th / 2.0);
+    // Brass mixing vat with a glowing sight glass at the paddle coordinate (64,57).
+    cv.solid(move |p| circle(p, c, 38.0), BRASS, OW);
     cv.shape(move |p| circle(p, c, 31.0), move |p| mix(HONEY, MUSTARD, (p.y - c.y + 31.0) / 62.0), OW);
+    cv.shape(move |p| circle(p, c, 14.0), move |p| {
+        let t = ((p.x - c.x) / 14.0).abs().min(1.0);
+        mix(LAMP_INNER, LAMP, t)
+    }, 1.2);
     cv.fill(move |p| ring(p, c, 18.0, 2.0), |_| with_alpha(WHITE, 0.3));
+    for k in 0..8 {
+        rivet(&mut cv, c + Vec2::from_angle(k as f32 * TAU / 8.0) * 34.0, 2.0);
+    }
+    copper_pipe(&mut cv, v(x + 16.0, y + th + 8.0), v(x + w - 16.0, y + th + 8.0), 3.0);
+    vent(&mut cv, v(x + w - 28.0, y + 14.0));
     cv
 }
 
@@ -777,17 +970,30 @@ pub fn sentry_head() -> Canvas {
 
 pub fn engine() -> Canvas {
     let mut cv = Canvas::new(256, 256);
-    let (x, y, w, h) = block(&mut cv, 8.0, 10.0, 240.0, 236.0, 26.0, 24.0, PLUM, lit(PLUM, 0.62));
-    let c = v(x + w / 2.0, y + h / 2.0);
-    cv.solid(move |p| circle(p, c, 92.0), MUSTARD, OW);
-    cv.solid(move |p| circle(p, c, 80.0), ENGINE_INNER, OW);
+    let (x, y, w, th) = block(&mut cv, 8.0, 10.0, 240.0, 236.0, 26.0, 24.0, PAPER, side_of(WOOD));
+    roof(&mut cv, x, y, w, th, 24.0);
+    planks(&mut cv, x + 5.0, y + th + 1.0, w - 10.0, 22.0, 9.0);
+    let c = v(x + w / 2.0, y + th / 2.0);
+    // Brass reactor ring; the engine_ring overlay spins on top of it.
+    cv.solid(move |p| circle(p, c, 94.0), BRASS, OW);
+    cv.solid(move |p| circle(p, c, 82.0), ENGINE_INNER, OW);
+    // Glowing furnace core at the light coordinate (128,115).
+    cv.shape(move |p| circle(p, c, 56.0), move |p| {
+        let t = ((p.x - c.x) / 56.0).abs().min(1.0);
+        mix(LAMP_INNER, LAMP, t)
+    }, 1.4);
     for k in 0..12 {
         let a = k as f32 * TAU / 12.0;
-        rivet(&mut cv, c + Vec2::from_angle(a) * 86.0, 2.8);
+        rivet(&mut cv, c + Vec2::from_angle(a) * 88.0, 2.8);
     }
     for (dx, dy) in [(-96.0, -92.0), (96.0, -92.0), (-96.0, 92.0), (96.0, 92.0)] {
         cv.solid(move |p| circle(p, c + v(dx, dy), 9.0), HONEY, 2.0);
     }
+    // Brass and copper pipe runs along the roof edges.
+    brass_pipe(&mut cv, v(x + 24.0, y + 20.0), v(x + w - 24.0, y + 20.0), 4.0);
+    copper_pipe(&mut cv, v(x + 24.0, y + th - 12.0), v(x + w - 24.0, y + th - 12.0), 4.0);
+    // Steam vent at the top.
+    vent(&mut cv, v(c.x, y + 12.0));
     cv
 }
 

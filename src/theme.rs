@@ -350,6 +350,19 @@ pub const WOOD_DARK: u32 = 0x9a6c48;
 
 // ---------------------------------------------------------------- machines
 
+// Market-stall roofs (Task 7): soft dusty-rose lacquer over cream/wood walls,
+// with verdigris ridge and eave trim. Kept as machine tokens so sprites and any
+// later UI accent can share the exact same rose.
+pub const ROOF: u32 = LACQUER_500;
+pub const ROOF_SHADE: u32 = LACQUER_600;
+pub const ROOF_LIGHT: u32 = LACQUER_400;
+/// Verdigris teal ridge cap and eave trim on the roofs.
+pub const TRIM: u32 = VERDIGRIS_500;
+pub const TRIM_DARK: u32 = VERDIGRIS_600;
+/// Boiler-room fittings: warm brass and copper for pipes, collars and frames.
+pub const BRASS: u32 = 0xc99a42;
+pub const COPPER: u32 = 0xb8744c;
+
 pub const DRILL_HOLE: u32 = 0x4a3a30;
 pub const PIT: u32 = 0x2c2226;
 pub const FIREBOX: u32 = 0x2a1a1a;

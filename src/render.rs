@@ -953,6 +953,22 @@ fn light(a: &Assets, cam: &Cam, pos: Vec2, radius: f32, col: Color) {
     a.draw_centered("glow", cam.w2s(pos), size, 0.0, theme::rgba(col.r * 0.5, col.g * 0.5, col.b * 0.5, col.a));
 }
 
+/// Steam vent point per machine, in sprite pixels from the sprite's top-left.
+/// Each matches the brass vent painted into the corresponding sprite in
+/// `gen_assets`. Used by Task 8b to spawn steam puffs over active machines.
+#[allow(dead_code)]
+pub const VENTS: &[(Kind, Vec2)] = &[
+    (Kind::Smelter, Vec2::new(97.0, 6.0)),
+    (Kind::Assembler, Vec2::new(154.0, 24.0)),
+    (Kind::Lab, Vec2::new(150.0, 32.0)),
+    (Kind::Generator, Vec2::new(31.0, 20.0)),
+    (Kind::Refinery, Vec2::new(58.0, 36.0)),
+    (Kind::Mixer, Vec2::new(94.0, 24.0)),
+    (Kind::Drill, Vec2::new(96.0, 22.0)),
+    (Kind::Wellhead, Vec2::new(46.0, 24.0)),
+    (Kind::GrandEngine, Vec2::new(128.0, 22.0)),
+];
+
 fn draw_lights(a: &Assets, world: &World, cam: &Cam, t: f32, glow: f32) {
     let warm = theme::color(theme::LAMP);
     for e in world.entities.iter().flatten() {
