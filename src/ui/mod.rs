@@ -16,7 +16,7 @@ mod widgets;
 
 use metrics::{ui_camera, ui_height, ui_width};
 
-pub use metrics::ui_mouse;
+pub use metrics::{mouse_override, screen_mouse, screenshot_mode, ui_mouse};
 pub use minimap::Minimap;
 pub use panels::inventory::hovered_inventory_item;
 pub use primitives::{circle, circle_lines, rrect, rrect_dashed_lines, rrect_lines};

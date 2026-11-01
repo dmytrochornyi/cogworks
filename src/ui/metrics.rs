@@ -26,10 +26,38 @@ pub(super) fn ui_height() -> f32 {
     ui_size().y
 }
 
+/// Whether the game is rendering a fixed screenshot (`COGWORKS_SCREENSHOT`).
+pub fn screenshot_mode() -> bool {
+    std::env::var("COGWORKS_SCREENSHOT").is_ok()
+}
+
+/// Dev-aid mouse override in logical UI coordinates, active only in screenshot
+/// mode. `COGWORKS_MOUSE=x,y` lets a reviewer place the cursor over a hover
+/// state (a slot, a button, a recipe) without a real mouse.
+pub fn mouse_override() -> Option<Vec2> {
+    if !screenshot_mode() {
+        return None;
+    }
+    let s = std::env::var("COGWORKS_MOUSE").ok()?;
+    let (x, y) = s.split_once(',')?;
+    Some(vec2(x.trim().parse().ok()?, y.trim().parse().ok()?))
+}
+
 /// Mouse position in logical UI space.
 pub fn ui_mouse() -> Vec2 {
+    if let Some(m) = mouse_override() {
+        return m;
+    }
     let m: Vec2 = mouse_position().into();
     m / ui_scale()
+}
+
+/// Mouse position in physical screen pixels, honouring the same override.
+pub fn screen_mouse() -> Vec2 {
+    if let Some(m) = mouse_override() {
+        return m * ui_scale();
+    }
+    mouse_position().into()
 }
 
 /// The UI camera, laid out in logical UI space over the given size.

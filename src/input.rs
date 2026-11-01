@@ -1,4 +1,4 @@
-use macroquad::prelude::{IVec2, KeyCode, MouseButton, Vec2, is_key_down, is_key_pressed, is_mouse_button_down, is_mouse_button_pressed, ivec2, mouse_position, mouse_wheel};
+use macroquad::prelude::{IVec2, KeyCode, MouseButton, Vec2, is_key_down, is_key_pressed, is_mouse_button_down, is_mouse_button_pressed, ivec2, mouse_wheel};
 
 use crate::game::{Game, Panel};
 use crate::items::Item;
@@ -281,7 +281,7 @@ impl Game {
     }
 
     pub fn mouse_world(&self) -> Vec2 {
-        self.cam.s2w(mouse_position().into())
+        self.cam.s2w(ui::screen_mouse())
     }
 
     pub fn mouse_tile(&self) -> IVec2 {
