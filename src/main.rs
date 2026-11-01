@@ -499,6 +499,10 @@ async fn main() {
         play_sound(music, PlaySoundParams { looped: true, volume: MUSIC_VOLUME });
     }
     let mut game = Game::new(world, assets);
+    // Dev aid: start the day at a chosen phase (0 = midnight, as in `sky_at_phase`).
+    if let Some(p) = std::env::var("COGWORKS_DAY_PHASE").ok().and_then(|v| v.parse::<f32>().ok()) {
+        game.world.time = DAY_LENGTH * (p.clamp(0.0, 1.0) + 0.7);
+    }
     // Dev aid: render a few seconds, write a screenshot and quit.
     let screenshot = std::env::var("COGWORKS_SCREENSHOT").ok();
     if screenshot.is_some() {

@@ -162,6 +162,13 @@ mod tests {
         (w, h)
     }
 
+    /// The grade shader must not reintroduce film grain or a per-frame noise term.
+    #[test]
+    fn composite_has_no_grain() {
+        assert!(!COMPOSITE.contains("fract(sin("), "COMPOSITE must not add film grain");
+        assert!(!COMPOSITE.contains("Params.x"), "COMPOSITE must not read a noise param");
+    }
+
     #[test]
     fn sprite_sizes_match_baseline() {
         let mut baseline: Vec<(String, (u32, u32))> = include_str!("sprite_sizes.txt")
@@ -231,11 +238,11 @@ void main() {
     vec3 col = c * l;
     // Soft highlight roll-off so bright lamps bloom into cream instead of clipping.
     col = col / (1.0 + max(col - 0.85, 0.0) * 0.8);
-    // Warm grade: plum-lifted shadows, honeyed highlights.
+    // Warm grade: lavender-lifted shadows, honeyed highlights.
     float luma = dot(col, vec3(0.299, 0.587, 0.114));
     col = mix(col, col * vec3(1.06, 1.0, 0.88), Params.w);
-    col += vec3(0.045, 0.02, 0.06) * (1.0 - luma);
-    col = mix(vec3(luma), col, 0.92);
+    col += vec3(0.03, 0.025, 0.06) * (1.0 - luma);
+    col = mix(vec3(luma), col, 0.90);
     vec2 d = uv - 0.5;
     col *= 1.0 - dot(d, d) * Params.z;
     gl_FragColor = vec4(col, 1.0);

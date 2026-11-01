@@ -80,8 +80,8 @@ pub fn grade(c: Color) -> Color {
     let warm = Color::new(c.r * 1.06, c.g, c.b * 0.88, c.a);
     let mut out = mix(c, warm, 0.35);
     let lift = (1.0 - luma).clamp(0.0, 1.0);
-    out.r = (out.r + 0.045 * lift).min(1.0);
-    out.g = (out.g + 0.020 * lift).min(1.0);
+    out.r = (out.r + 0.030 * lift).min(1.0);
+    out.g = (out.g + 0.025 * lift).min(1.0);
     out.b = (out.b + 0.060 * lift).min(1.0);
     Color::new(out.r, out.g, out.b, c.a)
 }

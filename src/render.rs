@@ -109,23 +109,43 @@ fn angle(d: Dir) -> f32 {
 pub struct Sky {
     /// Ambient light multiplier.
     pub ambient: Color,
-    /// 0 at noon, 1 at midnight.
+    /// Darkness: 0 at noon, 1 at midnight. Drives particles and clouds.
     pub night: f32,
+    /// How strongly lamps, windows and lanterns shine: 0 by day, 1 at night.
+    pub glow: f32,
     pub label: &'static str,
 }
 
-pub fn sky(time: f32) -> Sky {
-    // Start the first day in the morning.
-    let p = (time / DAY_LENGTH + 0.3).fract();
-    const KEYS: [(f32, [f32; 3], &str); 8] = [
-        (0.00, [0.30, 0.30, 0.50], "Night"),
-        (0.22, [0.78, 0.58, 0.60], "Dawn"),
-        (0.30, [1.00, 0.92, 0.82], "Morning"),
-        (0.50, [1.00, 0.98, 0.93], "Midday"),
-        (0.68, [1.00, 0.84, 0.64], "Golden hour"),
-        (0.77, [0.88, 0.56, 0.56], "Sunset"),
-        (0.85, [0.46, 0.40, 0.64], "Dusk"),
-        (1.00, [0.30, 0.30, 0.50], "Night"),
+/// First three channels of a theme token, as floats.
+const fn c3(hex: u32) -> [f32; 3] {
+    let c = theme::rgb(hex);
+    [c[0], c[1], c[2]]
+}
+
+/// Smoothly interpolate a value keyed by day fraction (0 = midnight).
+fn lerp_keys(keys: &[(f32, f32)], p: f32) -> f32 {
+    let k = keys.iter().rposition(|(t, _)| *t <= p).unwrap_or(0).min(keys.len() - 2);
+    let (t0, v0) = keys[k];
+    let (t1, v1) = keys[k + 1];
+    let f = ((p - t0) / (t1 - t0)).clamp(0.0, 1.0);
+    let f = f * f * (3.0 - 2.0 * f);
+    v0 + (v1 - v0) * f
+}
+
+/// The pure core of `sky()`: `p` is the day fraction with 0 = midnight.
+pub fn sky_at_phase(p: f32) -> Sky {
+    let p = p.rem_euclid(1.0);
+    const KEYS: [(f32, [f32; 3], &str); 10] = [
+        (0.00, c3(theme::DUSK_500), "Night"),
+        (0.22, c3(theme::DUSK_500), "Night"),
+        (0.26, [0.78, 0.62, 0.70], "Dawn"),
+        (0.30, [0.96, 0.90, 0.80], "Morning"),
+        (0.50, [0.98, 1.00, 0.95], "Midday"),
+        (0.62, [1.00, 0.80, 0.55], "Golden hour"),
+        (0.70, [0.88, 0.56, 0.56], "Sunset"),
+        (0.80, c3(theme::DUSK_300), "Dusk"),
+        (0.88, c3(theme::DUSK_500), "Night"),
+        (1.00, c3(theme::DUSK_500), "Night"),
     ];
     let k = KEYS.iter().rposition(|(t, _, _)| *t <= p).unwrap_or(0).min(KEYS.len() - 2);
     let (t0, c0, label) = KEYS[k];
@@ -133,12 +153,42 @@ pub fn sky(time: f32) -> Sky {
     let f = ((p - t0) / (t1 - t0)).clamp(0.0, 1.0);
     let f = f * f * (3.0 - 2.0 * f);
     let c: Vec<f32> = (0..3).map(|i| c0[i] + (c1[i] - c0[i]) * f).collect();
-    let lum = (c[0] + c[1] + c[2]) / 3.0;
+    // Darkness follows its own curve, so particles and clouds stay in step with
+    // the phase even though the night ambient is now brighter (never pitch dark).
+    const NIGHT: [(f32, f32); 9] = [
+        (0.00, 1.0),
+        (0.22, 1.0),
+        (0.30, 0.0),
+        (0.50, 0.0),
+        (0.62, 0.2),
+        (0.70, 0.55),
+        (0.80, 0.9),
+        (0.88, 1.0),
+        (1.00, 1.0),
+    ];
+    // Lamps come on at golden hour and stay lit through the long dusk and night.
+    const GLOW: [(f32, f32); 9] = [
+        (0.00, 1.0),
+        (0.22, 1.0),
+        (0.26, 0.0),
+        (0.60, 0.0),
+        (0.62, 0.15),
+        (0.70, 0.55),
+        (0.80, 0.9),
+        (0.88, 1.0),
+        (1.00, 1.0),
+    ];
     Sky {
         ambient: theme::rgba(c[0], c[1], c[2], 1.0),
-        night: ((0.95 - lum) / 0.55).clamp(0.0, 1.0),
+        night: lerp_keys(&NIGHT, p),
+        glow: lerp_keys(&GLOW, p),
         label,
     }
+}
+
+pub fn sky(time: f32) -> Sky {
+    // Start the first day in the morning.
+    sky_at_phase((time / DAY_LENGTH + 0.3).fract())
 }
 
 // ------------------------------------------------------------------ sprites
@@ -432,10 +482,10 @@ impl Renderer {
         let amb = sky.ambient;
         clear_background(theme::rgba(amb.r * 0.5, amb.g * 0.5, amb.b * 0.5, 1.0));
         gl_use_material(&a.additive);
-        draw_lights(a, world, cam, t, sky.night);
+        draw_lights(a, world, cam, t, sky.glow);
         for p in self.particles.iter().filter(|p| p.kind == PKind::Firefly) {
             let blink = 0.5 + 0.5 * (t * 3.0 + p.seed * 10.0).sin();
-            light(a, cam, p.pos, 0.7, theme::rgba(0.9, 1.0, 0.5, 0.5 * blink * sky.night));
+            light(a, cam, p.pos, 0.7, theme::rgba(0.9, 1.0, 0.5, 0.5 * blink * sky.glow));
         }
         gl_use_default_material();
 
@@ -466,7 +516,7 @@ impl Renderer {
                     a.draw_centered("smoke", s, Vec2::splat(size), p.seed * TAU, rgba(WHITE, f * 0.7));
                 }
                 PKind::Firefly => draw_circle(s.x, s.y, 0.05 * z, theme::rgba(1.0, 1.0, 0.7, 0.9)),
-                PKind::Mote => draw_circle(s.x, s.y, 0.035 * z, theme::rgba(1.0, 0.95, 0.8, 0.35 * f.min(1.0 - f) * 2.0)),
+                PKind::Mote => draw_circle(s.x, s.y, 0.035 * z, theme::rgba(1.0, 0.95, 0.8, 0.45 * f.min(1.0 - f) * 2.0)),
                 PKind::Spark => draw_circle(s.x, s.y, 0.05 * z, theme::rgba(1.0, 0.85, 0.5, f)),
             }
         }
@@ -855,26 +905,26 @@ fn light(a: &Assets, cam: &Cam, pos: Vec2, radius: f32, col: Color) {
     a.draw_centered("glow", cam.w2s(pos), size, 0.0, theme::rgba(col.r * 0.5, col.g * 0.5, col.b * 0.5, col.a));
 }
 
-fn draw_lights(a: &Assets, world: &World, cam: &Cam, t: f32, night: f32) {
+fn draw_lights(a: &Assets, world: &World, cam: &Cam, t: f32, glow: f32) {
     let warm = theme::color(theme::LAMP);
     for e in world.entities.iter().flatten() {
         let p = e.pos.as_vec2();
         let flick = 0.92 + 0.08 * (t * 7.0 + p.x * 3.1).sin();
         let px = |x: f32, y: f32| p + vec2(x, y) / PX;
         match e.kind {
-            Kind::Pole => light(a, cam, p + LANTERN, 3.6, rgba(warm, night * 0.9 * flick)),
-            Kind::Smelter if e.active => light(a, cam, px(64.0, 104.0), 2.6, theme::rgba(1.0, 0.5, 0.2, (0.3 + night * 0.7) * flick)),
-            Kind::Generator if e.active => light(a, cam, px(74.0, 61.0), 2.0, theme::rgba(1.0, 0.7, 0.35, 0.15 + night * 0.5)),
-            Kind::Lab if e.active => light(a, cam, px(96.0, 87.0), 3.0, theme::rgba(0.5, 0.95, 0.9, 0.25 + night * 0.6)),
-            Kind::Assembler if e.active => light(a, cam, px(96.0, 86.0), 1.8, theme::rgba(0.9, 0.8, 0.5, night * 0.5)),
+            Kind::Pole => light(a, cam, p + LANTERN, 4.2, rgba(warm, glow * 0.9 * flick)),
+            Kind::Smelter if e.active => light(a, cam, px(64.0, 104.0), 2.6, theme::rgba(1.0, 0.5, 0.2, (0.3 + glow * 0.7) * flick)),
+            Kind::Generator if e.active => light(a, cam, px(74.0, 61.0), 2.0, theme::rgba(1.0, 0.7, 0.35, 0.15 + glow * 0.5)),
+            Kind::Lab if e.active => light(a, cam, px(96.0, 87.0), 3.0, theme::rgba(0.5, 0.95, 0.9, 0.25 + glow * 0.6)),
+            Kind::Assembler if e.active => light(a, cam, px(96.0, 86.0), 1.8, theme::rgba(0.9, 0.8, 0.5, glow * 0.5)),
             Kind::Sentry if e.active => light(a, cam, px(64.0, 57.0), 1.6, theme::rgba(1.0, 0.85, 0.5, 0.5 * flick)),
-            Kind::GrandEngine => light(a, cam, px(128.0, 115.0), 5.0, theme::rgba(0.75, 0.5, 1.0, 0.3 + night * 0.6)),
-            Kind::Hive => light(a, cam, px(96.0, 96.0), 3.0, theme::rgba(0.95, 0.4, 0.7, 0.15 + night * 0.45)),
+            Kind::GrandEngine => light(a, cam, px(128.0, 115.0), 5.0, theme::rgba(0.75, 0.5, 1.0, 0.3 + glow * 0.6)),
+            Kind::Hive => light(a, cam, px(96.0, 96.0), 3.0, theme::rgba(0.95, 0.4, 0.7, 0.15 + glow * 0.45)),
             _ => {}
         }
     }
     if world.player.alive() {
-        light(a, cam, world.player.pos, 4.5, rgba(warm, night * 0.75));
+        light(a, cam, world.player.pos, 4.5, rgba(warm, glow * 0.75));
     }
     for s in &world.shots {
         light(a, cam, s.from, 1.4, theme::rgba(1.0, 0.85, 0.5, 0.6));
@@ -944,5 +994,41 @@ mod tests {
     fn preview_corners_stay_small() {
         assert_eq!(radius_of(Vec2::splat(20.0)), 4.0);
         assert_eq!(radius_of(Vec2::splat(200.0)), 12.0);
+    }
+
+    #[test]
+    fn night_is_never_pitch_dark() {
+        let mut min_avg = f32::INFINITY;
+        let mut darkest = sky_at_phase(0.0);
+        for i in 0..1000 {
+            let s = sky_at_phase(i as f32 / 1000.0);
+            let avg = (s.ambient.r + s.ambient.g + s.ambient.b) / 3.0;
+            if avg < min_avg {
+                min_avg = avg;
+                darkest = s;
+            }
+        }
+        assert!(min_avg >= 0.45, "night too dark: min ambient avg = {min_avg:.3}");
+        assert!(darkest.ambient.b > darkest.ambient.r, "darkest ambient should lean blue (lavender)");
+    }
+
+    #[test]
+    fn days_are_bright_and_sunny() {
+        let s = sky_at_phase(0.5);
+        let avg = (s.ambient.r + s.ambient.g + s.ambient.b) / 3.0;
+        assert!(avg >= 0.95, "midday ambient avg = {avg:.3}");
+        assert!(s.glow < 0.1, "midday glow = {:.3}", s.glow);
+    }
+
+    #[test]
+    fn lanterns_glow_from_golden_hour() {
+        assert!(sky_at_phase(0.68).glow >= 0.3, "glow at golden hour = {:.3}", sky_at_phase(0.68).glow);
+        assert!(sky_at_phase(0.85).glow >= 0.8, "glow at dusk = {:.3}", sky_at_phase(0.85).glow);
+    }
+
+    #[test]
+    fn dusk_phase_is_long() {
+        let lit = (0..1000).filter(|i| sky_at_phase(*i as f32 / 1000.0).glow >= 0.5).count();
+        assert!(lit as f32 / 1000.0 >= 0.40, "lanterns lit for only {lit}/1000 of the day");
     }
 }
