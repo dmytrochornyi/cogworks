@@ -4,6 +4,7 @@ use macroquad::prelude::{BLACK, IVec2, MouseButton, Rect, clear_background, get_
 
 use crate::assets::Assets;
 use crate::audio::Audio;
+use crate::input::Gesture;
 use crate::items::Item;
 use crate::render::{Cam, Renderer, sky};
 use crate::save;
@@ -27,6 +28,10 @@ pub struct Game {
     pub rot: Dir,
     /// Last tile painted during the current left-drag.
     pub(crate) last_drag: Option<IVec2>,
+    /// Which surface the left button's current press began on.
+    pub(crate) gesture_left: Gesture,
+    /// Which surface the right button's current press began on.
+    pub(crate) gesture_right: Gesture,
     pub panel: Panel,
     /// 0→1 open animation for the current modal panel; 1 = settled.
     pub(crate) panel_slide: f32,
@@ -65,6 +70,8 @@ impl Game {
             tool: None,
             rot: Dir::E,
             last_drag: None,
+            gesture_left: Gesture::Idle,
+            gesture_right: Gesture::Idle,
             panel: Panel::None,
             panel_slide: 1.0,
             last_panel: Panel::None,

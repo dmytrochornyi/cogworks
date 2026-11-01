@@ -43,7 +43,7 @@ pub fn draw(g: &mut Game) {
     hud::radio(g, &a);
     hud::toasts(g, &a);
     if g.show_help {
-        hud::help(&a);
+        hud::help(g, &a);
     }
     hud::overlays(g, &a);
     tooltip::draw_tooltip(&a, &g.tooltip);

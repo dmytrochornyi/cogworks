@@ -9,6 +9,33 @@ use crate::world::{Dir, Kind, dims};
 /// Seconds of holding right click to pick up a building.
 const DECONSTRUCT_TIME: f32 = 0.3;
 
+/// Which surface a mouse button's press began on.
+///
+/// A press that starts on a UI element stays `Ui` until the button is released,
+/// even if the UI disappears mid-press, so it can never leak into the world.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Gesture {
+    Idle,
+    World,
+    Ui,
+}
+
+/// Advances one button's gesture state for a frame.
+///
+/// `pressed` means the button went down this frame; `down` means it is held
+/// (including the frame it went down); `over_ui` means the cursor is over a UI
+/// rect. A press over UI becomes `Ui`, a press elsewhere becomes `World`, a
+/// release returns to `Idle`, and anything else keeps the current state.
+pub fn next_gesture(g: Gesture, pressed: bool, down: bool, over_ui: bool) -> Gesture {
+    if pressed {
+        if over_ui { Gesture::Ui } else { Gesture::World }
+    } else if !down {
+        Gesture::Idle
+    } else {
+        g
+    }
+}
+
 impl Game {
     pub(crate) fn input(&mut self, dt: f32) {
         let mut walk = Vec2::ZERO;
@@ -142,10 +169,24 @@ impl Game {
         let over_ui = self.mouse_over_ui();
         let tile = self.mouse_tile();
 
+        // Track which surface each button's press began on.
+        self.gesture_left = next_gesture(
+            self.gesture_left,
+            is_mouse_button_pressed(MouseButton::Left),
+            is_mouse_button_down(MouseButton::Left),
+            over_ui,
+        );
+        self.gesture_right = next_gesture(
+            self.gesture_right,
+            is_mouse_button_pressed(MouseButton::Right),
+            is_mouse_button_down(MouseButton::Right),
+            over_ui,
+        );
+
         // Left: build, or open the building under the cursor.
         if !is_mouse_button_down(MouseButton::Left) {
             self.last_drag = None;
-        } else if !over_ui || self.last_drag.is_some() {
+        } else if self.gesture_left == Gesture::World {
             match self.tool.and_then(Item::place_kind) {
                 Some(kind) => self.paint(kind),
                 None if is_mouse_button_pressed(MouseButton::Left) => {
@@ -161,7 +202,7 @@ impl Game {
         }
 
         // Right: pick up buildings or mine ore.
-        let right = is_mouse_button_down(MouseButton::Right) && !over_ui;
+        let right = is_mouse_button_down(MouseButton::Right) && self.gesture_right == Gesture::World;
         let in_reach = self.world.player.in_reach(tile);
         let building = self.world.entity_ref_at(tile).filter(|e| e.kind != Kind::Hive).map(|e| e.pos);
         match (right, building) {
@@ -264,5 +305,39 @@ impl Game {
             Some(item) if item.place_kind().is_some() => self.tool = Some(item),
             _ => {}
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn gesture_started_on_ui_never_builds() {
+        // Press over UI, then keep the button held even as the UI disappears.
+        let mut g = next_gesture(Gesture::Idle, true, true, true);
+        assert_eq!(g, Gesture::Ui);
+        for _ in 0..10 {
+            g = next_gesture(g, false, true, false);
+        }
+        assert_eq!(g, Gesture::Ui, "a press that started on UI must stay Ui until release");
+    }
+
+    #[test]
+    fn gesture_in_world_survives_crossing_ui() {
+        // Press in the world, then the drag passes over the hotbar.
+        let mut g = next_gesture(Gesture::Idle, true, true, false);
+        assert_eq!(g, Gesture::World);
+        g = next_gesture(g, false, true, true);
+        assert_eq!(g, Gesture::World, "a press that started in the world stays World while held");
+    }
+
+    #[test]
+    fn release_resets_gesture() {
+        let ui = next_gesture(Gesture::Idle, true, true, true);
+        assert_eq!(next_gesture(ui, false, false, false), Gesture::Idle);
+
+        let world = next_gesture(Gesture::Idle, true, true, false);
+        assert_eq!(next_gesture(world, false, false, true), Gesture::Idle);
     }
 }

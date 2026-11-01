@@ -158,31 +158,46 @@ pub(super) fn toasts(g: &Game, a: &Assets) {
     }
 }
 
-pub(super) fn help(a: &Assets) {
-    let lines = [
-        ("Welcome to Cogworks", TextSize::Xl, TITLE),
-        ("", TextSize::M, TEXT),
-        ("WASD · walk          Wheel · zoom          E · backpack & workbench          T · research", TextSize::M, TEXT),
-        ("1–0 · quickbar      R · rotate      Q · copy building or empty hands      Esc · close", TextSize::M, TEXT),
-        ("Left click · build (drag belts, pipes, walls) or open a building", TextSize::M, TEXT),
-        ("Right hold · mine ore by hand, or pick a building back up", TextSize::M, TEXT),
-        ("F5 · save   F9 · load   O · pollution   P · peaceful   M · music   Space · pause", TextSize::M, TEXT),
-        ("", TextSize::M, TEXT),
-        ("Arms carry things from behind them to the front. Drills drop ore at their chute.", TextSize::M, TEXT),
-        ("Belts have two lanes; feeding from the side fills the near one.", TextSize::M, TEXT),
-        ("Machines need power: burn coal in a Generator, spread it with lamp poles.", TextSize::M, TEXT),
-        ("Smoke drifts out to the hives at the map's edge, and they come to visit.", TextSize::M, TEXT),
-        ("Fill Labs with data, research upward, and wake the Grand Engine.", TextSize::M, TEXT),
-        ("", TextSize::M, TEXT),
-        ("H · hide this note", TextSize::S, TEXT_DIM),
-    ];
-    let w = lines.iter().map(|(l, s, _)| text_w(a, l, *s)).fold(0.0, f32::max) + 2.0 * space::XL;
-    let h = lines.len() as f32 * LINE + 2.0 * space::L;
-    let r = Rect::new(space::L, 142.0, w, h);
+/// The help note's text rows: (text, size, colour).
+const HELP_LINES: &[(&str, TextSize, Color)] = &[
+    ("Welcome to Cogworks", TextSize::Xl, TITLE),
+    ("", TextSize::M, TEXT),
+    ("WASD · walk          Wheel · zoom          E · backpack & workbench          T · research", TextSize::M, TEXT),
+    ("1–0 · quickbar      R · rotate      Q · copy building or empty hands      Esc · close", TextSize::M, TEXT),
+    ("Left click · build (drag belts, pipes, walls) or open a building", TextSize::M, TEXT),
+    ("Right hold · mine ore by hand, or pick a building back up", TextSize::M, TEXT),
+    ("F5 · save   F9 · load   O · pollution   P · peaceful   M · music   Space · pause", TextSize::M, TEXT),
+    ("", TextSize::M, TEXT),
+    ("Arms carry things from behind them to the front. Drills drop ore at their chute.", TextSize::M, TEXT),
+    ("Belts have two lanes; feeding from the side fills the near one.", TextSize::M, TEXT),
+    ("Machines need power: burn coal in a Generator, spread it with lamp poles.", TextSize::M, TEXT),
+    ("Smoke drifts out to the hives at the map's edge, and they come to visit.", TextSize::M, TEXT),
+    ("Fill Labs with data, research upward, and wake the Grand Engine.", TextSize::M, TEXT),
+    ("", TextSize::M, TEXT),
+    ("H · hide this note", TextSize::S, TEXT_DIM),
+];
+
+/// Widest help line measured at 17px M PLUS (≈650 px), plus rounding headroom
+/// so the note's width is stable at every UI scale and never clips the text.
+const HELP_MAX_TEXT_W: f32 = 700.0;
+
+/// The help note's on-screen bounds, clamped so it never runs off the right or
+/// bottom edge. The text is drawn at `x + space::XL`, `y + space::L + k * LINE`,
+/// which this rect covers by construction.
+fn help_rect(ui_w: f32, ui_h: f32) -> Rect {
+    let w = (HELP_MAX_TEXT_W + 2.0 * space::XL).min(ui_w - 2.0 * space::L).max(0.0);
+    let h = (HELP_LINES.len() as f32 * LINE + 2.0 * space::L).min(ui_h - 142.0).max(0.0);
+    Rect::new(space::L, 142.0, w, h)
+}
+
+pub(super) fn help(g: &mut Game, a: &Assets) {
+    let r = help_rect(ui_width(), ui_height());
     surface(r, Elevation::Panel);
-    for (k, (l, size, col)) in lines.iter().enumerate() {
+    for (k, (l, size, col)) in HELP_LINES.iter().enumerate() {
         text_keys(a, l, r.x + space::XL, r.y + space::L + k as f32 * LINE, *size, *col);
     }
+    // Clicks that start on the note must not build, mine or open buildings.
+    g.ui_rects.push(r);
 }
 
 pub(super) fn overlays(g: &Game, a: &Assets) {
@@ -202,5 +217,28 @@ pub(super) fn overlays(g: &Game, a: &Assets) {
     }
     if g.paused {
         banner("Paused", TEXT, ui_height() / 2.0 - 110.0);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn help_note_blocks_clicks() {
+        let r = help_rect(1440.0, 900.0);
+        // The note is non-empty.
+        assert!(r.w > 0.0 && r.h > 0.0, "help rect is empty: {r:?}");
+        // It covers every line of text, drawn at y = r.y + space::L + k * LINE.
+        for k in 0..HELP_LINES.len() {
+            let top = r.y + space::L + k as f32 * LINE;
+            assert!(top >= r.y, "line {k} starts above the rect");
+            assert!(top + LINE <= r.y + r.h, "line {k} falls below the rect");
+        }
+        // The text is drawn at x = r.x + space::XL, so the rect must leave room
+        // for the widest line to the right of that point.
+        assert!(r.w - space::XL >= HELP_MAX_TEXT_W, "rect too narrow for the help text");
+        // On a normal window the whole note stays on screen.
+        assert!(r.x + r.w <= 1440.0 && r.y + r.h <= 900.0, "note runs off screen: {r:?}");
     }
 }
