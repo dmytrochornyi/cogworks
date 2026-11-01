@@ -132,13 +132,3 @@ pub const SPRITES: &[(&str, &[u8])] = &[
     ("icon_bolt", include_bytes!("../assets/sprites/icon_bolt.png")),
     ("icon_note", include_bytes!("../assets/sprites/icon_note.png")),
 ];
-
-pub const SOUNDS: &[(&str, &[u8])] = &[
-    ("music", include_bytes!("../assets/audio/music.wav")),
-    ("place", include_bytes!("../assets/audio/place.wav")),
-    ("pickup", include_bytes!("../assets/audio/pickup.wav")),
-    ("craft", include_bytes!("../assets/audio/craft.wav")),
-    ("research", include_bytes!("../assets/audio/research.wav")),
-    ("shot", include_bytes!("../assets/audio/shot.wav")),
-    ("click", include_bytes!("../assets/audio/click.wav")),
-];

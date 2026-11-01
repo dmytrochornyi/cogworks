@@ -1,5 +1,7 @@
 mod assets;
 mod assets_list;
+mod audio;
+mod audio_list;
 mod items;
 mod render;
 mod save;
@@ -9,7 +11,6 @@ mod world;
 
 use std::rc::Rc;
 
-use macroquad::audio::{PlaySoundParams, play_sound, set_sound_volume};
 use macroquad::prelude::*;
 
 use assets::Assets;
@@ -20,7 +21,6 @@ use world::*;
 const TICK: f32 = 1.0 / 60.0;
 /// Seconds of holding right click to pick up a building.
 const DECONSTRUCT_TIME: f32 = 0.3;
-const MUSIC_VOLUME: f32 = 0.38;
 
 fn conf() -> Conf {
     let dim = |key: &str, default: i32| {
@@ -72,6 +72,7 @@ pub struct Game {
     pub time: f32,
     pub assets: Rc<Assets>,
     renderer: Renderer,
+    audio: audio::Audio,
     pub music_on: bool,
     /// Seconds since a gunshot was last heard, to keep sentries from drowning everything.
     shot_cooldown: f32,
@@ -82,7 +83,7 @@ pub struct Game {
 }
 
 impl Game {
-    fn new(world: World, assets: Rc<Assets>) -> Self {
+    fn new(world: World, assets: Rc<Assets>, audio: audio::Audio) -> Self {
         let cam = Cam { pos: world.player.pos, zoom: 52.0 };
         Game {
             world,
@@ -105,6 +106,7 @@ impl Game {
             time: 0.0,
             assets,
             renderer: Renderer::new(),
+            audio,
             music_on: true,
             shot_cooldown: 0.0,
             autosave_timer: 0.0,
@@ -251,10 +253,7 @@ impl Game {
             self.paused = !self.paused;
         }
         if is_key_pressed(KeyCode::M) {
-            self.music_on = !self.music_on;
-            if let Some(music) = self.assets.sounds.get("music") {
-                set_sound_volume(music, if self.music_on { MUSIC_VOLUME } else { 0.0 });
-            }
+            self.audio.toggle_music();
         }
         if is_key_pressed(KeyCode::P) {
             self.world.peaceful = !self.world.peaceful;
@@ -399,6 +398,8 @@ impl Game {
         for e in events {
             self.toast(e);
         }
+        self.audio.update(dt, sky(self.world.time).night);
+        self.music_on = self.audio.music_on();
         self.play_sounds(dt);
         if let Panel::Building(id, pos) = self.panel
             && self.world.entities.get(id).and_then(Option::as_ref).is_none_or(|e| e.pos != pos)
@@ -415,29 +416,23 @@ impl Game {
     fn play_sounds(&mut self, dt: f32) {
         self.shot_cooldown += dt;
         if is_mouse_button_pressed(MouseButton::Left) && self.mouse_over_ui() {
-            self.play("click", 0.5);
+            self.audio.sfx("click", 0.5);
         }
         let sounds: Vec<Sfx> = self.world.sounds.drain(..).collect();
         for s in sounds {
             match s {
-                Sfx::Place => self.play("place", 0.8),
-                Sfx::Pickup => self.play("pickup", 0.7),
-                Sfx::Craft => self.play("craft", 0.7),
-                Sfx::Research => self.play("research", 0.8),
+                Sfx::Place => self.audio.sfx("place", 0.8),
+                Sfx::Pickup => self.audio.sfx("pickup", 0.7),
+                Sfx::Craft => self.audio.sfx("craft", 0.7),
+                Sfx::Research => self.audio.sfx("research", 0.8),
                 Sfx::Shot(at) => {
                     let d = at.distance(self.world.player.pos);
                     if self.shot_cooldown > 0.07 && d < 30.0 {
                         self.shot_cooldown = 0.0;
-                        self.play("shot", 0.6 * (1.0 - d / 30.0));
+                        self.audio.sfx("shot", 0.6 * (1.0 - d / 30.0));
                     }
                 }
             }
-        }
-    }
-
-    fn play(&self, name: &str, volume: f32) {
-        if let Some(s) = self.assets.sounds.get(name) {
-            play_sound(s, PlaySoundParams { looped: false, volume });
         }
     }
 
@@ -508,10 +503,8 @@ async fn main() {
         None => World::new(seed),
     };
     let assets = Rc::new(Assets::load().await);
-    if let Some(music) = assets.sounds.get("music") {
-        play_sound(music, PlaySoundParams { looped: true, volume: MUSIC_VOLUME });
-    }
-    let mut game = Game::new(world, assets);
+    let audio = audio::Audio::load().await;
+    let mut game = Game::new(world, assets, audio);
     // Dev aid: start the day at a chosen phase (0 = midnight, as in `sky_at_phase`).
     if let Some(p) = std::env::var("COGWORKS_DAY_PHASE").ok().and_then(|v| v.parse::<f32>().ok()) {
         game.world.time = DAY_LENGTH * (p.clamp(0.0, 1.0) + 0.7);
