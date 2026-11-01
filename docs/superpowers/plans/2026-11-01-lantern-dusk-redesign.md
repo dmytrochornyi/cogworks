@@ -379,4 +379,5 @@ Spec "Revision" item 7. Everything is slow and smooth, never flickery.
     
     Reduce the tint strength by about 35%, and scale the tint by `(1 - light_luminance)` in `COMPOSITE` so lamp-lit areas stay peach. Keep some green in the grass at golden hour (green channel ≥ 0.75 × red on `MEADOW_400`). Mirror the change in `theme::grade()`. The existing sky tests must still pass.
   - Iron ore reads almost as dark as coal. Make iron a lighter blue-grey with brighter silver facets, so the two are distinct by value as well as by shape.
+  - The lab's terracotta base has a repeating little glyph pattern (like small stick figures) that reads as noise. Replace it with a calm plaster or tile texture.
 - [ ] **Step 5:** Fix anything else that fails, then commit: `chore: lantern-dusk redesign polish`.
