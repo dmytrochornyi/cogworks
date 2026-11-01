@@ -221,4 +221,5 @@ Commit: `fix: no silent item or fluid loss; tunnels pair either way; pause freez
   4. Hover a workbench recipe. The card shows all three input states.
   5. The cursor states (point, hand, build, mine) appear in the right places.
   6. Load an old save (`cogworks_save.json` from before this plan, or the demo save). It loads.
+- [ ] **Step 2b (from the Task 7 audit):** the idle frames `player_0`/`player_1` have no feet, while the walk frames do, so the robot seems to grow legs when it starts moving. Give the idle frames the same two feet in a standing pose, and keep the breathing bob.
 - [ ] **Step 3:** Report file sizes after the split. No source file over 600 lines, except generated `assets_list.rs` and `sprites.rs` (data-heavy, may stay).
