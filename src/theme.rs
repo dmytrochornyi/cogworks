@@ -110,6 +110,11 @@ impl TextSize {
             TextSize::Xxl => 32.0,
         }
     }
+
+    /// Titles and headings use the Bold cut of the typeface; the rest use Medium.
+    pub const fn bold(self) -> bool {
+        matches!(self, TextSize::Xl | TextSize::Xxl)
+    }
 }
 
 // ---------------------------------------------------------------- layout scale

@@ -16,6 +16,7 @@ pub struct Assets {
     pub atlas: Texture2D,
     rects: HashMap<&'static str, Rect>,
     pub font: Font,
+    pub font_bold: Font,
     pub sounds: HashMap<&'static str, Sound>,
     /// Combines the world with the light map and applies colour grading and a vignette.
     pub composite: Material,
@@ -69,8 +70,10 @@ impl Assets {
             }
         }
 
-        let font = load_ttf_font_from_bytes(include_bytes!("../assets/fonts/Nunito.ttf"))
+        let font = load_ttf_font_from_bytes(include_bytes!("../assets/fonts/MPLUSRounded1c-Medium.ttf"))
             .expect("font");
+        let font_bold = load_ttf_font_from_bytes(include_bytes!("../assets/fonts/MPLUSRounded1c-Bold.ttf"))
+            .expect("font bold");
 
         let composite = load_material(
             ShaderSource::Glsl { vertex: VERTEX, fragment: COMPOSITE },
@@ -100,7 +103,7 @@ impl Assets {
         )
         .expect("additive shader");
 
-        Assets { atlas, rects, font, sounds, composite, additive }
+        Assets { atlas, rects, font, font_bold, sounds, composite, additive }
     }
 
     pub fn rect(&self, name: &str) -> Rect {

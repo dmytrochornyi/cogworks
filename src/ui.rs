@@ -203,25 +203,45 @@ fn slide_px(g: &Game) -> f32 {
 
 // ------------------------------------------------------------------ type
 
+/// Physical raster size and the draw-time scale that undoes `ui_scale()`.
+///
+/// Text is rasterised at the screen's pixel density (font size × `ui_scale`)
+/// and then drawn at `font_scale = 1 / ui_scale`, so it stays sharp on 1440p
+/// and 4K instead of being drawn small and scaled up. Measuring must use the
+/// same pair so drawn and measured widths agree.
+pub fn raster_params(px: f32, scale: f32) -> (u16, f32) {
+    ((px * scale).round() as u16, 1.0 / scale)
+}
+
+/// The font cut for a text size: titles and headings are Bold, the rest Medium.
+fn font_for(a: &Assets, size: TextSize) -> &Font {
+    if size.bold() { &a.font_bold } else { &a.font }
+}
+
 /// Draws one line of text. `y` is the top of the line box; the baseline comes
 /// from the font's own metrics so layouts no longer need magic offsets.
 pub fn text(a: &Assets, t: &str, x: f32, y: f32, size: TextSize, col: Color) {
-    let d = measure_text(t, Some(&a.font), size.px() as u16, 1.0);
+    let (font_size, font_scale) = raster_params(size.px(), ui_scale());
+    let font = font_for(a, size);
+    let d = measure_text(t, Some(font), font_size, font_scale);
     draw_text_ex(t, x.round(), (y + d.offset_y).round(), TextParams {
-        font: Some(&a.font),
-        font_size: size.px() as u16,
+        font: Some(font),
+        font_size,
+        font_scale,
         color: col,
         ..Default::default()
     });
 }
 
 pub fn text_w(a: &Assets, t: &str, size: TextSize) -> f32 {
-    measure_text(t, Some(&a.font), size.px() as u16, 1.0).width
+    let (font_size, font_scale) = raster_params(size.px(), ui_scale());
+    measure_text(t, Some(font_for(a, size)), font_size, font_scale).width
 }
 
 /// Text centred in `r`, using measured height rather than a baseline guess.
 fn text_in(a: &Assets, t: &str, r: Rect, size: TextSize, col: Color) {
-    let d = measure_text(t, Some(&a.font), size.px() as u16, 1.0);
+    let (font_size, font_scale) = raster_params(size.px(), ui_scale());
+    let d = measure_text(t, Some(font_for(a, size)), font_size, font_scale);
     text(a, t, r.x + (r.w - d.width) / 2.0, r.y + (r.h - d.height) / 2.0, size, col);
 }
 
@@ -1273,6 +1293,13 @@ fn draw_tooltip(a: &Assets, lines: &[String]) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn raster_params_render_at_physical_size() {
+        assert_eq!(raster_params(17.0, 1.6), (27, 0.625));
+        assert_eq!(raster_params(17.0, 1.0), (17, 1.0));
+        assert_eq!(raster_params(13.0, 0.8).0, 10);
+    }
 
     #[test]
     fn ui_scale_stays_readable() {
