@@ -68,6 +68,38 @@ sunny, a bit of B**, and turn into the lantern market every evening.
      `·`, `×`, `→`) to keep the binary small. That's the builder's call.
 7. **Happy and calm.** Overall saturation is pastel-soft but cheerful. Nothing grimy or dark.
 
+## Revision 2026-11-01 (owner feedback after Tasks 1–5)
+
+The owner reviewed the running game and asked for the following. These override earlier parts of this document where they conflict.
+
+1. **Seamless ground.** The grass grid must not be visible. Ground is one continuous surface. No square soil patches under ore.
+2. **Ores that are attractive and distinct** in shape *and* colour:
+   - iron: blue-grey angular chunks with silver glints
+   - copper: warm orange, rounded, teal patina spots
+   - coal: glossy black lumps with a faint purple sheen
+   - stone: pale sandy smooth boulders
+   - quartz: lilac crystal spikes
+   
+   Ore fields fade softly into the grass.
+3. **No pixelation or jaggies.** Anti-aliasing on. UI borders drawn as smooth shapes. Smooth minimap. Sprites stay clean when zoomed out.
+4. **Gentler red.**
+   - The lacquer red becomes a soft dusty rose or vermilion, used as a thin accent.
+   - Panel edges become warm wood-brown, with cream paper doing most of the work.
+   - Machine roofs use the softer red too.
+5. **Lavender dusk that actually reads as lavender.** Screenshots showed golden hour as murky olive and dusk/night as teal-green.
+   - Golden hour must read as warm gold-peach.
+   - Dusk must read as lavender-pink to violet.
+   - Lamp and player light must read as warm peach-orange pools.
+   - Fireflies must be fewer and smaller.
+6. **"Boiler room" machinery.** The owner likes the boiler room from Spirited Away (mood only; copy no characters, including the soot creatures). Machines combine the soft market-stall roofs with boiler-room details:
+   - brass and copper pipes, rivets, dark warm wood
+   - glowing furnace mouths and windows
+   - steam vents
+7. **More life and gentle animation.** The world felt empty and static.
+   - **Active machines bustle:** puffs of steam from vents and chimneys, furnace glow that breathes and flickers softly, turning gears and pumping pistons, an occasional spark. Idle machines are calm.
+   - **The world breathes:** grass and flowers sway in the breeze, butterflies and drifting petals by day, lanterns swing gently, shadows of birds pass overhead now and then, and fireflies at night.
+   - Everything is slow and smooth (periods of seconds, eased motion), never flickery like the removed grain.
+
 ## Non-goals
 
 - No gameplay, balance, controls, layout or mechanics changes. Panel positions and sizes stay

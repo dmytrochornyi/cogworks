@@ -214,19 +214,94 @@ No gameplay changes.
 - [ ] **Step 6:** Take screenshots at `COGWORKS_DAY_PHASE` = 0.5, 0.68, 0.8 and 0.95, with at least one lamp pole placed near the player. The look must progress sunny → golden → lantern dusk → lavender night.
 - [ ] **Step 7:** Commit: `feat: sunny days and a long lantern-lit dusk`.
 
-### Task 6: Ground, ores, decorations, belts
+### Task 5b: Crisp rendering and gentler red
+
+Spec "Revision" items 3 and 4.
+
+**Files:**
+- Modify:
+  - `src/main.rs`: `conf()` gets `sample_count: 4`
+  - `src/ui.rs`: `rrect`, `rrect_lines`, `surface_alpha`, `Minimap` filter
+  - `src/assets.rs`: atlas mipmaps
+  - `src/theme.rs`: the `LACQUER_*` ramp, `EDGE`, the `TRIM_*` tokens, plus a new `WOOD_TRIM` token
+
+- [ ] **Step 1:** Write the failing test `soft_red_is_not_aggressive` in `src/theme.rs` tests:
+  - HSV saturation of `LACQUER_500` ≤ 0.55
+  - `contrast(TITLE, BG) >= 4.5` still holds
+  - `EDGE == WOOD_TRIM`
+  
+  Add a small `fn saturation(hex: u32) -> f32` helper.
+- [ ] **Step 2:** Run `cargo test --release theme`. Expected: FAIL.
+- [ ] **Step 3:** Retune `LACQUER_*` toward a soft dusty rose-vermilion (500 roughly `0xc9705f`). Add `WOOD_TRIM` (warm mid wood-brown, roughly `0x9a6b4a`) and point `EDGE` at it. Panel borders become `line::BASE` (1.5) wood-brown; red is used only for titles, the selected slot ring and the primary button. `TRIM_SHADOW` becomes a darker wood. Re-run the contrast tests and fix any that break.
+- [ ] **Step 4:** Smooth shapes:
+  - Draw panel borders as two filled rounded rects (an outer one in the border colour, then an inner one in the fill colour, inset by the border width) instead of `rrect_lines`. Keep `rrect_lines` only for thin decorative outlines.
+  - Raise corner segments from 6 to 12 in `rrect`, `rrect_lines` and `rrect_dashed_lines`.
+  - Set `sample_count: 4` in `conf()`.
+  - Switch the minimap texture filter to `FilterMode::Linear`.
+- [ ] **Step 5:** Atlas mipmaps. If miniquad 0.4 exposes mipmap generation for the atlas texture (e.g. `texture_generate_mipmaps` plus a mipmap min-filter on the raw miniquad texture via `get_internal_gl().quad_context`), enable it and raise the atlas `PAD` to 8 px so small mips don't bleed. If it isn't available, skip this and say so in the report.
+- [ ] **Step 6:** Run `cargo test --release`, then screenshots (the reviewer runs them): help panel, inventory, research.
+- [ ] **Step 7:** Commit: `feat: crisp anti-aliased UI and a gentler red`.
+
+### Task 5c: Make dusk read as lavender and golden hour as gold
+
+Spec "Revision" item 5. The reviewer's screenshots showed golden hour as murky olive and dusk/night as teal-green, because the ambient multiplies green grass.
+
+**Files:**
+- Modify:
+  - `src/render.rs`: `sky_at_phase` keys, lamp/player/firefly light colours, firefly count and size
+  - `src/assets.rs`: `COMPOSITE`, a new uniform
+  - `src/theme.rs`: `grade()`, `LAMP`
+
+**Interfaces:**
+- Produces: `pub struct Sky { …, tint: Color }`, a mood tint (rgb plus strength in `a`) that the composite applies as a colour-grade mix, mostly into shadows and midtones.
+- `COMPOSITE` gets a new `uniform vec4 Tint;`. Do **not** use `Params.x`: `composite_has_no_grain` forbids it.
+
+- [ ] **Step 1:** Write the failing tests in `src/render.rs`:
+  - `golden_hour_is_gold`: at p = 0.68, the ambient has r > g > b and r − b ≥ 0.3.
+  - `dusk_is_lavender`: at p = 0.8, `tint` has b > g and r > g, with strength ≥ 0.25.
+  - `night_is_violet_not_teal`: at p = 0.95, the tint has b > g and r ≥ g.
+- [ ] **Step 2:** Run `cargo test --release sky`. Expected: FAIL.
+- [ ] **Step 3:** Implement the tint keys:
+  - none by day
+  - peach-gold at golden hour
+  - lavender-pink at dusk
+  - violet-blue at night
+  
+  Apply `Tint` in `COMPOSITE` as `col = mix(col, col * tint_rgb * 1.6 + tint_rgb * 0.08, strength * (1.0 - luma * 0.5))`, or an equivalent that keeps lamp-lit areas warm. Mirror it in `theme::grade()` with an extra `tint` parameter, used by the minimap. `LAMP` becomes warm peach-orange (roughly `0xffb27a`), and player and lamp light use it. Halve the firefly count and shrink their light radius from 0.7 to 0.45.
+- [ ] **Step 4:** Run `cargo test --release`, then screenshots at `COGWORKS_DAY_PHASE` = 0.5 / 0.68 / 0.8 / 0.95 (the reviewer runs them).
+- [ ] **Step 5:** Commit: `fix: golden hour gold, dusk lavender, warm lamp light`.
+
+### Task 6: Seamless ground, distinct ores, decorations, belts
+
+Spec goal 4 and "Revision" items 1–2.
 
 **Files:**
 - Modify:
   - `src/bin/gen_assets/sprites.rs`: `grass`, `decor`, `rock`/`ore`, `tar`, `belt`, `belt_curve`, `tunnel`, `splitter`
+  - `src/bin/gen_assets/main.rs`: the grass sprite list
+  - `src/render.rs`: `draw_ground`
   - `src/theme.rs`: the terrain, ore and belt tokens
+  - `src/sprite_sizes.txt`: a deliberate baseline change, grass only
 - Regenerate the assets.
 
-- [ ] **Step 1:** Grass and decorations: lush pastel meadow greens (`MEADOW_*`), softer tufts, and a few small pastel flowers (pink, butter-yellow, lilac) in the `decor` variants.
-- [ ] **Step 2:** Ores stay distinct: grey-blue iron, warm copper, near-black coal, cream stone, lilac quartz, each with soft highlights. Belts become a dark wood/lacquer band with brass rails (spec "My calls").
-- [ ] **Step 3:** Run `cargo run --release --bin gen_assets && cargo test --release`. Expected: PASS (sizes unchanged).
-- [ ] **Step 4:** Screenshot at `COGWORKS_DAY_PHASE=0.5` with all ore types and a belt in view. Each ore must be identifiable at a glance.
-- [ ] **Step 5:** Commit: `art: meadow ground, ores and belts`.
+**Interfaces:**
+- Ground sprites are `grass_{i}_{j}` for i, j in 0..4: sixteen 64x64 tiles cut from **one** 256x256 canvas whose noise and blades are periodic with period 256. `draw_ground` uses `grass_{x.rem_euclid(4)}_{y.rem_euclid(4)}`, so neighbouring tiles always continue each other.
+- `sprite_sizes.txt`: remove `grass_0..3` and add the 16 new names at 64x64. No other line may change.
+
+- [ ] **Step 1:** Write the failing test `ground_tiles_are_seamless` in the gen_assets binary (a `#[cfg(test)]` in `sprites.rs`). Build the 256 canvas. For every pair of horizontally and vertically adjacent cut tiles, including the wrap from i=3 to i=0, the mean absolute RGB difference between touching edge pixel columns or rows must be < 0.04 (colours in 0..1). Make the 256 canvas through a pure `pub fn ground_sheet() -> Canvas` so it's testable.
+- [ ] **Step 2:** Run `cargo test --release --bin gen_assets`. Expected: FAIL.
+- [ ] **Step 3:** Implement the sheet: soft pastel meadow greens (`MEADOW_*`), gentle large-scale colour variation (period 256), wrapped blades. Then remove the `draw_rectangle` soil square in `draw_ground`. If ore fields need a ground tint, draw the existing `glow` sprite as a soft, low-alpha round blob instead of a square.
+- [ ] **Step 4:** Ores, distinct in shape and colour, with sizes unchanged:
+  - **iron:** blue-grey angular faceted chunks with 1–2 small silver glint highlights
+  - **copper:** warm orange rounded nuggets with teal patina spots
+  - **coal:** glossy black lumps with a faint purple sheen highlight
+  - **stone:** pale sandy smooth rounded boulders
+  - **quartz:** lilac crystal spikes (keep the current shape idea, refine it)
+  
+  Decorations get a few small pastel flowers (pink, butter-yellow, lilac). Belts become a dark wood/lacquer band with brass rails.
+- [ ] **Step 5:** Run `cargo run --release --bin gen_assets && cargo test --release`. Expected: PASS, including the updated size baseline.
+- [ ] **Step 6:** Screenshot at `COGWORKS_DAY_PHASE=0.5` with ore fields in view (the reviewer runs it). There must be no visible grid, no soil squares, and each ore must be identifiable at a glance.
+- [ ] **Step 7:** Commit: `art: seamless meadow ground, distinct ores, belts`.
 
 ### Task 7: Red paper lanterns and roofed machines
 
@@ -241,7 +316,7 @@ No gameplay changes.
 - Must not move: the `pole` lantern position (it must stay where `LANTERN` in `render.rs` points), or the window and furnace spots at the `draw_lights` coordinates for smelter, generator, lab and assembler.
 
 - [ ] **Step 1:** Pole: the wooden post stays. The hanging lantern becomes an oval red paper lantern with dark top and bottom caps, faint vertical ribs and a warm inner gradient. It sits on the same spot.
-- [ ] **Step 2:** For each of the nine machines, paint a curved red-lacquer roof with a teal (verdigris) ridge or trim inside the existing canvas, over cream or wood walls. Windows sit at the existing light coordinates in a warm `LAMP_INNER` tone. Keep the drill bit, assembler gear, generator wheel, mixer paddle, wellhead beam and engine ring overlays aligned with their current pivots.
+- [ ] **Step 2:** Use the "boiler room" language (spec "Revision" item 6): soft dusty-rose roofs combined with brass and copper pipes, rivets, dark warm wood, glowing furnace mouths and windows, and steam vents. Pick one vent point per machine and expose it as a `pub const` in `src/render.rs` (`VENTS: &[(Kind, Vec2)]`, in sprite pixels) for Task 8b. For each of the nine machines, paint a curved red-lacquer roof with a teal (verdigris) ridge or trim inside the existing canvas, over cream or wood walls. Windows sit at the existing light coordinates in a warm `LAMP_INNER` tone. Keep the drill bit, assembler gear, generator wheel, mixer paddle, wellhead beam and engine ring overlays aligned with their current pivots.
 - [ ] **Step 3:** Run `cargo run --release --bin gen_assets && cargo test --release`. Expected: PASS.
 - [ ] **Step 4:** Build one of each machine plus a pole (using save/load or play), then screenshot at day (0.5) and dusk (0.8). Lights must sit on windows and lanterns.
 - [ ] **Step 5:** Commit: `art: paper lanterns and roofed market-stall machines`.
@@ -258,6 +333,36 @@ No gameplay changes.
 - [ ] **Step 2:** Run `cargo run --release --bin gen_assets && cargo test --release`. Expected: PASS.
 - [ ] **Step 3:** Screenshot the inventory panel (all owned items visible) and the world with a chest, wall, sentry, pipes, arms and solar in view. Icons must be readable on `SLOT_WELL`.
 - [ ] **Step 4:** Commit: `art: repaint remaining buildings, items and characters`.
+
+### Task 8b: Life and gentle animation
+
+Spec "Revision" item 7. Everything is slow and smooth, never flickery.
+
+**Files:**
+- Modify:
+  - `src/render.rs`: particles (`PKind`), `draw_ground` decorations, entity drawing, lights
+  - `src/bin/gen_assets/sprites.rs` and `main.rs`: new sprites `lantern` (split from `pole`), `butterfly_0/1`, `petal`, `bird_shadow`, `steam`
+  - `src/sprite_sizes.txt`: add the new sprite names (deliberate). `pole` keeps its size; only its lantern part moves into the separate `lantern` sprite.
+
+**Interfaces:**
+- Produces pure helpers in `src/render.rs`, all tested:
+  - `pub fn sway(t: f32, seed: f32, amp: f32, period: f32) -> f32`: a smooth sine with a per-seed phase.
+  - `pub const MAX_BUTTERFLIES: usize = 6; pub const MAX_PETALS: usize = 12; pub const MAX_STEAM: usize = 40;`
+
+- [ ] **Step 1:** Write the failing tests:
+  - `sway_is_gentle`: over 10 s sampled at 60 Hz with amp 0.08 and period 3.0, |sway| ≤ 0.08 and the per-frame change ≤ 0.01.
+  - `particles_stay_capped`: run `update_particles` on a world with 30 active machines, by day and at night, for 60 s at dt = 1/60. Each kind's count stays ≤ its cap. If `update_particles` isn't testable without a window, extract its spawn logic into a pure function and test that.
+- [ ] **Step 2:** Run `cargo test --release`. Expected: FAIL.
+- [ ] **Step 3:** Implement:
+  - **Active machines:** steam puffs from `VENTS` (`PKind::Steam`: soft white, rising, growing, fading over 2–3 s). Furnace and window light breathes (a slow 0.85–1.0 sine plus a very small flicker). An occasional spark from smelters.
+  - **Lanterns:** the lantern is drawn as its own sprite, swinging on its hook with `sway(t, seed, 0.06, 3.5)`. Its light follows the swing.
+  - **Grass tufts and flowers** (decorations): rotate about their base with `sway(t, x*0.37+y*0.11, 0.07, 3.0)` (use `SpriteParams.pivot`).
+  - **Day:** up to 6 butterflies near the camera (two-frame flap at about 6 Hz, wandering paths) and up to 12 drifting petals.
+  - **Every 20–40 s:** a soft `bird_shadow` crosses the view at about 2.5 tiles/s, alpha ≤ 0.18, only by day.
+  - **Night:** fireflies stay as they are after Task 5c.
+- [ ] **Step 4:** Run `cargo test --release`, `cargo run --release --bin gen_assets` and `cargo test --release`. Expected: PASS.
+- [ ] **Step 5:** The reviewer screenshots day and dusk with a working smelter, an assembler and a lamp pole. They also record a 5 s clip (`COGWORKS_SCREENSHOT` frames, or by eye) to confirm the motion is smooth and calm.
+- [ ] **Step 6:** Commit: `feat: steam, swaying lanterns and grass, butterflies and bird shadows`.
 
 ### Task 9: Whole-look verification
 
