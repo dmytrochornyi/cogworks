@@ -381,4 +381,5 @@ Spec "Revision" item 7. Everything is slow and smooth, never flickery.
   - Iron ore reads almost as dark as coal. Make iron a lighter blue-grey with brighter silver facets, so the two are distinct by value as well as by shape.
   - The lab's terracotta base has a repeating little glyph pattern (like small stick figures) that reads as noise. Replace it with a calm plaster or tile texture.
   - Task 8 added a blanket `#![allow(dead_code)]` to `src/bin/gen_assets/paint.rs`. Remove it, and delete the colour aliases that are actually unused instead.
+  - At dusk the lantern poles barely cast a light pool (spec goal 2: lanterns are the evening centrepiece). Make the lantern light a clearly visible warm peach pool, about 4 tiles across, from golden hour onwards. It must stay peach, not whitish pink, once the tint fix above is done.
 - [ ] **Step 5:** Fix anything else that fails, then commit: `chore: lantern-dusk redesign polish`.
