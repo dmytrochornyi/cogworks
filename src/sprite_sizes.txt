@@ -128,3 +128,9 @@ tunnel 64 64
 wall 64 64
 wellhead 128 128
 wellhead_beam 112 40
+bird_shadow 160 64
+butterfly_0 32 32
+butterfly_1 32 32
+lantern 64 48
+petal 16 16
+steam 64 64

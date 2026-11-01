@@ -104,6 +104,14 @@ fn angle(d: Dir) -> f32 {
     }
 }
 
+/// A smooth sine sway with a per-`seed` phase. `amp` is the amplitude (radians
+/// where used for rotation, tiles where used for offsets) and `period` the full
+/// cycle time in seconds. Everything in the world moves through this one gentle
+/// curve, so nothing flickers.
+pub fn sway(t: f32, seed: f32, amp: f32, period: f32) -> f32 {
+    (t / period * TAU + seed).sin() * amp
+}
+
 // ------------------------------------------------------------------ time of day
 
 pub struct Sky {
@@ -337,7 +345,10 @@ pub fn draw_kind(a: &Assets, kind: Kind, dir: Dir, s0: Vec2, z: f32, tint: Color
             draw_arm_limb(a, c, angle(dir) - FRAC_PI_2, z, tint);
         }
         Kind::Pipe => a.draw("pipe_hub", s0, Vec2::splat(z), p),
-        Kind::Pole => a.draw("pole", s0 - vec2(0.0, 48.0 * k), vec2(64.0, 112.0) * k, p),
+        Kind::Pole => {
+            a.draw("pole", s0 - vec2(0.0, 48.0 * k), vec2(64.0, 112.0) * k, p);
+            draw_lantern(a, s0, k, 0.0, tint);
+        }
         _ => {
             let key = body_key(kind);
             a.draw(key, s0, a.size(key) * k, p);
@@ -378,10 +389,28 @@ fn draw_arm_limb(a: &Assets, c: Vec2, ang: f32, z: f32, tint: Color) {
 
 #[derive(Clone, Copy, PartialEq)]
 enum PKind {
-    Smoke,
+    Steam,
     Firefly,
     Mote,
     Spark,
+    Butterfly,
+    Petal,
+    BirdShadow,
+}
+
+/// Particle caps for the Task 8b "life" pass. Butterflies and petals drift by
+/// day, steam rises from active machines, and each kind is hard-capped so the
+/// world never fills with particles. The cap guarantees are unit-tested.
+pub const MAX_BUTTERFLIES: usize = 6;
+pub const MAX_PETALS: usize = 12;
+pub const MAX_STEAM: usize = 40;
+
+/// Pastel wing colours for butterflies, picked deterministically from the seed.
+const BUTTERFLY_COLORS: [u32; 4] = [theme::FLOWER_PINK, theme::FLOWER_BUTTER, theme::FLOWER_LILAC, theme::SKY];
+
+fn butterfly_color(seed: f32) -> Color {
+    let i = (seed * 3.0).rem_euclid(BUTTERFLY_COLORS.len() as f32) as usize;
+    theme::color(BUTTERFLY_COLORS[i])
 }
 
 struct Particle {
@@ -400,18 +429,187 @@ pub struct Renderer {
     rt_size: (u32, u32),
     particles: Vec<Particle>,
     rng: u64,
+    /// Seconds until the next bird shadow crosses the view.
+    bird_timer: f32,
+}
+
+/// xorshift64* in 0..1, shared by the renderer and the pure spawn function so
+/// the particle system stays deterministic and testable.
+fn rand01(rng: &mut u64) -> f32 {
+    *rng ^= *rng << 13;
+    *rng ^= *rng >> 7;
+    *rng ^= *rng << 17;
+    (*rng >> 40) as f32 / (1u64 << 24) as f32
+}
+
+/// Everything the per-frame spawner needs, free of any window state so the cap
+/// guarantees can be unit-tested. `vents` lists the active machines' steam
+/// sources (world position, puffs/second), `furnaces` their smelter furnace
+/// mouths and `shots` the muzzle positions of shots fired this frame.
+struct SpawnEnv<'a> {
+    dt: f32,
+    night: f32,
+    cam_pos: Vec2,
+    half: Vec2,
+    vents: &'a [(Vec2, f32)],
+    furnaces: &'a [Vec2],
+    shots: &'a [Vec2],
+}
+
+/// Steam puff rate (puffs/second) per active machine, roughly matching how
+/// busy each machine reads.
+fn vent_rate(kind: Kind) -> f32 {
+    match kind {
+        Kind::Smelter => 3.0,
+        Kind::Generator => 2.0,
+        Kind::Refinery => 1.5,
+        Kind::Assembler => 2.0,
+        Kind::Lab => 1.2,
+        Kind::Mixer => 1.5,
+        Kind::Drill => 1.2,
+        Kind::Wellhead => 1.0,
+        Kind::GrandEngine => 2.5,
+        _ => 1.0,
+    }
+}
+
+fn kind_count(particles: &[Particle], kind: PKind) -> usize {
+    particles.iter().filter(|p| p.kind == kind).count()
+}
+
+/// Advances every particle and drops the dead ones. Pure, so the cap test can
+/// drive a whole minute of frames without a window.
+fn advance_particles(particles: &mut Vec<Particle>, dt: f32) {
+    for p in particles.iter_mut() {
+        p.life -= dt;
+        p.pos += p.vel * dt;
+        match p.kind {
+            PKind::Steam => {
+                p.vel += WIND * dt * 0.5 + vec2(0.0, -0.25) * dt;
+                p.vel.x *= 1.0 - dt * 0.4;
+            }
+            PKind::Firefly | PKind::Mote => {
+                p.vel = Vec2::from_angle(p.seed + p.life * 0.9) * if p.kind == PKind::Mote { 0.25 } else { 0.5 };
+            }
+            PKind::Spark => p.vel *= 0.9,
+            PKind::Butterfly => p.vel = Vec2::from_angle(p.seed + p.life * 0.5) * 0.5,
+            PKind::Petal => {
+                p.vel.x = (p.seed + p.life * 0.7).sin() * 0.3;
+                p.vel.y = -0.15;
+            }
+            PKind::BirdShadow => {}
+        }
+    }
+    particles.retain(|p| p.life > 0.0);
+}
+
+/// Spawns this frame's particles, keeping every kind under its cap. Pure.
+fn spawn_particles(rng: &mut u64, particles: &mut Vec<Particle>, env: &SpawnEnv, bird_timer: &mut f32) {
+    let day = 1.0 - env.night;
+
+    // Steam rises from active machines' vents, capped.
+    if kind_count(particles, PKind::Steam) < MAX_STEAM {
+        for &(vent, rate) in env.vents {
+            if kind_count(particles, PKind::Steam) >= MAX_STEAM {
+                break;
+            }
+            if rand01(rng) < rate * env.dt {
+                let (r1, r2) = (rand01(rng), rand01(rng));
+                particles.push(Particle {
+                    pos: vent,
+                    vel: vec2(r1 * 0.3 - 0.15, -0.4 - r2 * 0.3),
+                    life: 2.0 + r1,
+                    max: 3.0,
+                    size: 0.4 + r1 * 0.25,
+                    kind: PKind::Steam,
+                    seed: r2,
+                });
+            }
+        }
+    }
+
+    // An occasional spark from a smelter's glowing furnace mouth.
+    for &mouth in env.furnaces {
+        if rand01(rng) < 0.5 * env.dt {
+            let (r1, r2) = (rand01(rng), rand01(rng));
+            particles.push(Particle {
+                pos: mouth,
+                vel: Vec2::from_angle(r1 * TAU) * (0.4 + r2 * 0.6),
+                life: 0.3,
+                max: 0.3,
+                size: 0.05,
+                kind: PKind::Spark,
+                seed: r1,
+            });
+        }
+    }
+
+    // Fireflies at night, golden dust by day, around the camera.
+    for (kind, want) in [(PKind::Firefly, (env.night * 20.0) as usize), (PKind::Mote, ((1.0 - env.night) * 22.0) as usize)] {
+        if kind_count(particles, kind) < want {
+            let (r1, r2, r3) = (rand01(rng), rand01(rng), rand01(rng));
+            let pos = env.cam_pos + vec2(r1 * 2.0 - 1.0, r2 * 2.0 - 1.0) * env.half;
+            particles.push(Particle { pos, vel: Vec2::ZERO, life: 6.0 + r3 * 6.0, max: 12.0, size: 0.08, kind, seed: r3 * TAU });
+        }
+    }
+
+    // Butterflies wander near the camera by day.
+    let want_bf = (day * MAX_BUTTERFLIES as f32) as usize;
+    if kind_count(particles, PKind::Butterfly) < want_bf {
+        let (r1, r2, r3) = (rand01(rng), rand01(rng), rand01(rng));
+        let pos = env.cam_pos + vec2(r1 * 2.0 - 1.0, r2 * 2.0 - 1.0) * env.half;
+        particles.push(Particle { pos, vel: Vec2::ZERO, life: 14.0 + r3 * 12.0, max: 26.0, size: 0.4 + r2 * 0.2, kind: PKind::Butterfly, seed: r3 * TAU });
+    }
+
+    // Drifting petals by day.
+    let want_pet = (day * MAX_PETALS as f32) as usize;
+    if kind_count(particles, PKind::Petal) < want_pet {
+        let (r1, r2, r3) = (rand01(rng), rand01(rng), rand01(rng));
+        let pos = env.cam_pos + vec2(r1 * 2.0 - 1.0, r2 * 2.0 - 1.0) * env.half;
+        particles.push(Particle { pos, vel: Vec2::ZERO, life: 10.0 + r3 * 8.0, max: 18.0, size: 0.22 + r2 * 0.1, kind: PKind::Petal, seed: r3 * TAU });
+    }
+
+    // Muzzle sparks from shots.
+    for &to in env.shots {
+        for _ in 0..2 {
+            let (r1, r2) = (rand01(rng), rand01(rng));
+            particles.push(Particle {
+                pos: to,
+                vel: Vec2::from_angle(r1 * TAU) * (1.0 + r2 * 2.0),
+                life: 0.25,
+                max: 0.25,
+                size: 0.06,
+                kind: PKind::Spark,
+                seed: r1,
+            });
+        }
+    }
+
+    // A soft bird shadow crosses the view now and then, by day only.
+    *bird_timer -= env.dt;
+    if env.night < 0.3 && *bird_timer <= 0.0 && kind_count(particles, PKind::BirdShadow) == 0 {
+        let (r1, r2) = (rand01(rng), rand01(rng));
+        let from_left = r2 < 0.5;
+        let speed = 2.5;
+        let width = env.half.x * 2.0 + 6.0;
+        let x = if from_left { env.cam_pos.x - env.half.x - 3.0 } else { env.cam_pos.x + env.half.x + 3.0 };
+        let y = env.cam_pos.y + (r1 * 2.0 - 1.0) * env.half.y * 0.7;
+        particles.push(Particle {
+            pos: vec2(x, y),
+            vel: vec2(if from_left { speed } else { -speed }, 0.0),
+            life: width / speed,
+            max: width / speed,
+            size: 3.5,
+            kind: PKind::BirdShadow,
+            seed: if from_left { 0.0 } else { 1.0 },
+        });
+        *bird_timer = 20.0 + rand01(rng) * 20.0;
+    }
 }
 
 impl Renderer {
     pub fn new() -> Self {
-        Renderer { world_rt: None, light_rt: None, rt_size: (0, 0), particles: Vec::new(), rng: 0x1234_5678 }
-    }
-
-    fn rand(&mut self) -> f32 {
-        self.rng ^= self.rng << 13;
-        self.rng ^= self.rng >> 7;
-        self.rng ^= self.rng << 17;
-        (self.rng >> 40) as f32 / (1u64 << 24) as f32
+        Renderer { world_rt: None, light_rt: None, rt_size: (0, 0), particles: Vec::new(), rng: 0x1234_5678, bird_timer: 6.0 }
     }
 
     fn ensure_targets(&mut self) {
@@ -429,67 +627,27 @@ impl Renderer {
     }
 
     fn update_particles(&mut self, world: &World, cam: &Cam, dt: f32, night: f32) {
-        for p in &mut self.particles {
-            p.life -= dt;
-            p.pos += p.vel * dt;
-            match p.kind {
-                PKind::Smoke => p.vel += WIND * dt * 0.6,
-                PKind::Firefly | PKind::Mote => {
-                    p.vel = Vec2::from_angle(p.seed + p.life * 0.9) * if p.kind == PKind::Mote { 0.25 } else { 0.5 };
-                }
-                PKind::Spark => p.vel *= 0.9,
-            }
-        }
-        self.particles.retain(|p| p.life > 0.0);
+        advance_particles(&mut self.particles, dt);
 
-        // Smoke from working furnaces and engines.
+        // Collect the active machines' spawn sources in world coordinates, so
+        // the pure spawn function below can be unit-tested without a window.
+        let mut vents = Vec::new();
+        let mut furnaces = Vec::new();
         for e in world.entities.iter().flatten() {
             if !e.active || !cam.on_screen(e.center(), 4.0) {
                 continue;
             }
-            let (vent, rate) = match e.kind {
-                Kind::Smelter => (e.pos.as_vec2() + vec2(97.0, 6.0) / PX, 3.0),
-                Kind::Generator => (e.pos.as_vec2() + vec2(31.0, 80.0) / PX, 2.0),
-                Kind::Refinery => (e.pos.as_vec2() + vec2(58.0, 36.0) / PX, 1.5),
-                _ => continue,
-            };
-            if self.rand() < rate * dt {
-                let (r1, r2) = (self.rand(), self.rand());
-                self.particles.push(Particle {
-                    pos: vent,
-                    vel: vec2(r1 * 0.3 - 0.15, -0.5 - r2 * 0.3),
-                    life: 3.0,
-                    max: 3.0,
-                    size: 0.5 + r1 * 0.3,
-                    kind: PKind::Smoke,
-                    seed: r2,
-                });
+            if let Some(&(_, vp)) = VENTS.iter().find(|(k, _)| *k == e.kind) {
+                vents.push((e.pos.as_vec2() + vp / PX, vent_rate(e.kind)));
+            }
+            if e.kind == Kind::Smelter {
+                furnaces.push(e.pos.as_vec2() + vec2(64.0, 104.0) / PX);
             }
         }
-        // Fireflies at night, golden dust by day, around the camera.
         let half = Cam::half_screen() / cam.zoom;
-        for (kind, want) in [(PKind::Firefly, (night * 20.0) as usize), (PKind::Mote, ((1.0 - night) * 22.0) as usize)] {
-            let have = self.particles.iter().filter(|p| p.kind == kind).count();
-            if have < want {
-                let (r1, r2, r3) = (self.rand(), self.rand(), self.rand());
-                let pos = cam.pos + vec2(r1 * 2.0 - 1.0, r2 * 2.0 - 1.0) * half;
-                self.particles.push(Particle { pos, vel: Vec2::ZERO, life: 6.0 + r3 * 6.0, max: 12.0, size: 0.08, kind, seed: r3 * TAU });
-            }
-        }
-        for s in &world.shots {
-            for _ in 0..2 {
-                let (r1, r2) = (self.rand(), self.rand());
-                self.particles.push(Particle {
-                    pos: s.to,
-                    vel: Vec2::from_angle(r1 * TAU) * (1.0 + r2 * 2.0),
-                    life: 0.25,
-                    max: 0.25,
-                    size: 0.06,
-                    kind: PKind::Spark,
-                    seed: r1,
-                });
-            }
-        }
+        let shot_pos: Vec<Vec2> = world.shots.iter().map(|s| s.to).collect();
+        let env = SpawnEnv { dt, night, cam_pos: cam.pos, half, vents: &vents, furnaces: &furnaces, shots: &shot_pos };
+        spawn_particles(&mut self.rng, &mut self.particles, &env, &mut self.bird_timer);
     }
 
     /// Renders the lit, graded world to the screen.
@@ -506,7 +664,7 @@ impl Renderer {
         set_camera(&rt_cam);
         clear_background(theme::color(theme::WORLD_CLEAR));
         draw_world(a, world, cam, t);
-        self.draw_particles(a, cam);
+        self.draw_particles(a, cam, t);
         draw_clouds(a, cam, world.time, 1.0 - sky.night);
         if show_pollution {
             draw_pollution(world, cam);
@@ -542,19 +700,41 @@ impl Renderer {
         gl_use_default_material();
     }
 
-    fn draw_particles(&self, a: &Assets, cam: &Cam) {
+    fn draw_particles(&self, a: &Assets, cam: &Cam, t: f32) {
         let z = cam.zoom;
         for p in &self.particles {
             let s = cam.w2s(p.pos);
             let f = p.life / p.max;
             match p.kind {
-                PKind::Smoke => {
-                    let size = (p.size + (1.0 - f) * 0.9) * z;
-                    a.draw_centered("smoke", s, Vec2::splat(size), p.seed * TAU, rgba(WHITE, f * 0.7));
+                PKind::Steam => {
+                    // Soft white, rising, growing and fading over its 2-3 s life.
+                    let grow = 1.0 - f;
+                    let size = (p.size + grow * 0.8) * z;
+                    a.draw_centered("steam", s, Vec2::splat(size), p.seed * TAU, rgba(WHITE, f * 0.6));
                 }
                 PKind::Firefly => draw_circle(s.x, s.y, 0.05 * z, theme::rgba(1.0, 1.0, 0.7, 0.9)),
                 PKind::Mote => draw_circle(s.x, s.y, 0.035 * z, theme::rgba(1.0, 0.95, 0.8, 0.45 * f.min(1.0 - f) * 2.0)),
                 PKind::Spark => draw_circle(s.x, s.y, 0.05 * z, theme::rgba(1.0, 0.85, 0.5, f)),
+                PKind::Butterfly => {
+                    let frame = ((t * 6.0) as i32).rem_euclid(2) as usize;
+                    let key = ["butterfly_0", "butterfly_1"][frame];
+                    let bank = (p.seed + p.life * 1.5).sin() * 0.4;
+                    a.draw_centered(key, s, Vec2::splat(p.size * z), bank, butterfly_color(p.seed));
+                }
+                PKind::Petal => {
+                    let spin = p.seed + (1.0 - f) * 4.0;
+                    a.draw_centered("petal", s, Vec2::splat(p.size * z), spin, rgba(WHITE, f));
+                }
+                PKind::BirdShadow => {
+                    let native = a.size("bird_shadow");
+                    let w = p.size * z;
+                    let size = vec2(w, w * native.y / native.x);
+                    a.draw("bird_shadow", s - size * 0.5, size, SpriteParams {
+                        flip_x: p.seed > 0.5,
+                        tint: theme::alpha(theme::SHADOW, 0.16),
+                        ..Default::default()
+                    });
+                }
             }
         }
     }
@@ -572,7 +752,7 @@ const GRASS_TILES: [[&str; 4]; 4] = [
     ["grass_3_0", "grass_3_1", "grass_3_2", "grass_3_3"],
 ];
 
-fn draw_ground(a: &Assets, world: &World, cam: &Cam, lo: IVec2, hi: IVec2) {
+fn draw_ground(a: &Assets, world: &World, cam: &Cam, lo: IVec2, hi: IVec2, t: f32) {
     let z = cam.zoom;
     for y in lo.y..=hi.y {
         for x in lo.x..=hi.x {
@@ -605,7 +785,14 @@ fn draw_ground(a: &Assets, world: &World, cam: &Cam, lo: IVec2, hi: IVec2) {
                 None if h % 100 < 9 && world.entity_at(p).is_none() => {
                     let key = format!("decor_{}", (h >> 8) % 8);
                     let off = vec2(((h >> 12) % 32) as f32, ((h >> 17) % 32) as f32) / 64.0 * z;
-                    a.draw(&key, s + off, Vec2::splat(z * 0.5), SpriteParams::default());
+                    // Grass tufts and flowers sway about their base in a gentle breeze.
+                    let sw = sway(t, x as f32 * 0.37 + y as f32 * 0.11, 0.07, 3.0);
+                    let base = s + off + vec2(z * 0.25, z * 0.5);
+                    a.draw(&key, s + off, Vec2::splat(z * 0.5), SpriteParams {
+                        rotation: sw,
+                        pivot: Some(base),
+                        ..Default::default()
+                    });
                 }
                 None => {}
             }
@@ -669,7 +856,7 @@ pub fn draw_world(a: &Assets, world: &World, cam: &Cam, t: f32) {
     let (lo, hi) = cam.visible();
     let z = cam.zoom;
     let k = z / PX;
-    draw_ground(a, world, cam, lo, hi);
+    draw_ground(a, world, cam, lo, hi, t);
 
     let on_screen: Vec<(usize, &Entity)> = world
         .entities
@@ -823,12 +1010,19 @@ fn draw_entity(a: &Assets, e: &Entity, cam: &Cam, t: f32) {
         a.draw_centered("hive", s0 + vec2(96.0, 96.0) * k, size, 0.0, WHITE);
         return;
     }
+    if e.kind == Kind::Pole {
+        // The lantern is its own sprite so it can swing gently on its hook.
+        let sw = sway(t, lantern_seed(e.pos.as_vec2()), 0.06, 3.5);
+        a.draw("pole", s0 - vec2(0.0, 48.0 * k), vec2(64.0, 112.0) * k, SpriteParams::default());
+        draw_lantern(a, s0, k, sw, WHITE);
+        return;
+    }
     draw_kind(a, e.kind, e.dir, s0, z, WHITE);
     match e.kind {
         Kind::Drill => a.draw_centered("drill_bit", at(64.0, 56.0), Vec2::splat(64.0 * k), spin(5.0), WHITE),
         Kind::Smelter if e.active => {
-            let flick = 0.8 + 0.2 * (t * 9.0 + e.pos.x as f32).sin();
-            a.draw_centered("glow", at(64.0, 104.0), vec2(70.0, 40.0) * k, 0.0, theme::rgba(1.0, 0.55, 0.2, 0.75 * flick));
+            let breathe = 0.925 + 0.075 * (t * 1.1 + e.pos.x as f32 * 2.3).sin();
+            a.draw_centered("glow", at(64.0, 104.0), vec2(70.0, 40.0) * k, 0.0, theme::rgba(1.0, 0.55, 0.2, 0.75 * breathe));
         }
         Kind::Assembler => a.draw_centered("assembler_gear", at(96.0, 86.0), Vec2::splat(80.0 * k), spin(1.6), WHITE),
         Kind::Lab => {
@@ -884,9 +1078,31 @@ fn draw_player(a: &Assets, player: &Player, cam: &Cam, t: f32) {
     });
 }
 
-/// Lantern position on a pole, in tiles from its top-left.
-const LANTERN: Vec2 = Vec2::new(46.0 / PX, (35.0 - 48.0) / PX);
+/// Lantern hook attachment on a pole, in tiles from its top-left tile. This is
+/// the swing pivot; the lantern body hangs straight down from it.
+const LANTERN_HOOK: Vec2 = Vec2::new(46.0 / PX, (21.0 - 48.0) / PX);
+/// How far the lantern body centre hangs below the hook, in tiles.
+const LANTERN_DROP: f32 = 14.0 / PX;
 const WIRE_ANCHOR: Vec2 = Vec2::new(0.5, (16.0 - 48.0) / PX);
+
+/// Per-pole phase so neighbouring lanterns don't swing in lockstep.
+fn lantern_seed(pos: Vec2) -> f32 {
+    pos.x * 1.7 + pos.y * 0.9
+}
+
+/// Draws the lantern hanging from a pole at `s0` (the pole's footprint top-left)
+/// with a scale factor `k`. It is its own sprite (64x48) whose hook top sits at
+/// local (32, 4); we place that point on the pole's hook and rotate about it.
+fn draw_lantern(a: &Assets, s0: Vec2, k: f32, rotation: f32, tint: Color) {
+    let hook = s0 + vec2(46.0, -27.0) * k;
+    let top_left = hook - vec2(32.0, 4.0) * k;
+    a.draw("lantern", top_left, vec2(64.0, 48.0) * k, SpriteParams {
+        rotation,
+        pivot: Some(hook),
+        tint,
+        ..Default::default()
+    });
+}
 
 fn draw_wires(world: &World, cam: &Cam) {
     let col = theme::alpha(theme::INK, 0.85);
@@ -955,8 +1171,7 @@ fn light(a: &Assets, cam: &Cam, pos: Vec2, radius: f32, col: Color) {
 
 /// Steam vent point per machine, in sprite pixels from the sprite's top-left.
 /// Each matches the brass vent painted into the corresponding sprite in
-/// `gen_assets`. Used by Task 8b to spawn steam puffs over active machines.
-#[allow(dead_code)]
+/// `gen_assets`. Drives the steam puffs that rise from active machines.
 pub const VENTS: &[(Kind, Vec2)] = &[
     (Kind::Smelter, Vec2::new(97.0, 6.0)),
     (Kind::Assembler, Vec2::new(154.0, 24.0)),
@@ -973,10 +1188,17 @@ fn draw_lights(a: &Assets, world: &World, cam: &Cam, t: f32, glow: f32) {
     let warm = theme::color(theme::LAMP);
     for e in world.entities.iter().flatten() {
         let p = e.pos.as_vec2();
-        let flick = 0.92 + 0.08 * (t * 7.0 + p.x * 3.1).sin();
+        // Lights breathe slowly (0.85..1.0) with a very small flicker on top.
+        let breathe = 0.925 + 0.075 * (t * 1.1 + p.x * 2.3).sin();
+        let flick = breathe + 0.02 * (t * 19.0 + p.y * 5.0).sin();
         let px = |x: f32, y: f32| p + vec2(x, y) / PX;
         match e.kind {
-            Kind::Pole => light(a, cam, p + LANTERN, 4.2, rgba(warm, glow * 0.9 * flick)),
+            Kind::Pole => {
+                // The lantern's light follows its swing about the hook.
+                let sw = sway(t, lantern_seed(p), 0.06, 3.5);
+                let center = p + LANTERN_HOOK + Vec2::from_angle(FRAC_PI_2 + sw) * LANTERN_DROP;
+                light(a, cam, center, 4.2, rgba(warm, glow * 0.9 * flick));
+            }
             Kind::Smelter if e.active => light(a, cam, px(64.0, 104.0), 2.6, theme::rgba(1.0, 0.5, 0.2, (0.3 + glow * 0.7) * flick)),
             Kind::Generator if e.active => light(a, cam, px(74.0, 61.0), 2.0, theme::rgba(1.0, 0.7, 0.35, 0.15 + glow * 0.5)),
             Kind::Lab if e.active => light(a, cam, px(96.0, 87.0), 3.0, theme::rgba(0.5, 0.95, 0.9, 0.25 + glow * 0.6)),
@@ -1114,5 +1336,53 @@ mod tests {
     fn night_is_violet_not_teal() {
         let t = sky_at_phase(0.95).tint;
         assert!(t.b > t.g && t.r >= t.g, "night tint should be violet (not teal), got r={:.3} g={:.3} b={:.3}", t.r, t.g, t.b);
+    }
+
+    #[test]
+    fn sway_is_gentle() {
+        let dt = 1.0 / 60.0;
+        for seed in [0.0, 2.5, 4.1] {
+            let mut prev = sway(0.0, seed, 0.08, 3.0);
+            for i in 1..=600 {
+                let t = i as f32 * dt;
+                let s = sway(t, seed, 0.08, 3.0);
+                assert!(s.abs() <= 0.08 + 1e-6, "sway exceeded its amplitude: {s}");
+                assert!((s - prev).abs() <= 0.01, "sway moved too fast per frame: {}", (s - prev).abs());
+                prev = s;
+            }
+        }
+    }
+
+    #[test]
+    fn particles_stay_capped() {
+        // 30 active machines: 30 steam vents and 30 smelter furnace mouths.
+        let vents: Vec<(Vec2, f32)> = (0..30).map(|i| (vec2(i as f32, 0.0), 3.0)).collect();
+        let furnaces: Vec<Vec2> = (0..30).map(|i| vec2(i as f32, 0.0)).collect();
+        let mut rng = 0x9e37_79b9_u64;
+        let dt = 1.0 / 60.0;
+        for night in [0.0f32, 1.0] {
+            let mut particles: Vec<Particle> = Vec::new();
+            let mut bird = 30.0f32;
+            for _ in 0..(60.0 / dt) as usize {
+                let env = SpawnEnv {
+                    dt,
+                    night,
+                    cam_pos: Vec2::ZERO,
+                    half: vec2(20.0, 12.0),
+                    vents: &vents,
+                    furnaces: &furnaces,
+                    shots: &[],
+                };
+                spawn_particles(&mut rng, &mut particles, &env, &mut bird);
+                advance_particles(&mut particles, dt);
+            }
+            let count = |k: PKind| particles.iter().filter(|p| p.kind == k).count();
+            assert!(count(PKind::Steam) <= MAX_STEAM, "steam exceeded cap at night={night}");
+            assert!(count(PKind::Butterfly) <= MAX_BUTTERFLIES, "butterflies exceeded cap at night={night}");
+            assert!(count(PKind::Petal) <= MAX_PETALS, "petals exceeded cap at night={night}");
+            assert!(count(PKind::Firefly) <= 20, "fireflies exceeded cap at night={night}");
+            assert!(count(PKind::Mote) <= 22, "motes exceeded cap at night={night}");
+            assert!(count(PKind::BirdShadow) <= 1, "bird shadows exceeded cap at night={night}");
+        }
     }
 }

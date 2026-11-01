@@ -67,6 +67,7 @@ fn main() {
     add("generator", sprites::generator());
     add("generator_wheel", sprites::wheel());
     add("pole", sprites::pole());
+    add("lantern", sprites::lantern());
     add("solar", sprites::solar());
     add("wellhead", sprites::wellhead());
     add("wellhead_beam", sprites::beam());
@@ -90,6 +91,11 @@ fn main() {
     }
     add("glow", sprites::soft_glow());
     add("smoke", sprites::smoke());
+    add("steam", sprites::steam());
+    add("butterfly_0", sprites::butterfly(0));
+    add("butterfly_1", sprites::butterfly(1));
+    add("petal", sprites::petal());
+    add("bird_shadow", sprites::bird_shadow());
     add("cloud", sprites::cloud());
     for icon in ["heart", "flask", "bolt", "note"] {
         add(&format!("icon_{icon}"), sprites::icon(icon));

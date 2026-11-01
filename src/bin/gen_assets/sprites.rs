@@ -893,7 +893,8 @@ pub fn wheel() -> Canvas {
     cv
 }
 
-/// Lamp post, 64x112: the bottom 64x64 is the tile it stands on.
+/// Lamp post, 64x112: the bottom 64x64 is the tile it stands on. The hanging
+/// lantern is split into its own `lantern` sprite so it can swing in the game.
 pub fn pole() -> Canvas {
     let mut cv = Canvas::new(64, 112);
     ground_shadow(&mut cv, v(36.0, 98.0), v(14.0, 5.0), 0.4);
@@ -903,29 +904,36 @@ pub fn pole() -> Canvas {
     for x in [14.0, 50.0] {
         cv.solid(move |p| circle(p, v(x, 15.0), 3.0), CREAM, 1.2);
     }
-    // Hanging red paper lantern, ~1.6x larger but still centred on `LANTERN`
-    // (46, 35) so the light stays put. Hook hangs from the crossarm above.
-    cv.fill(|p| capsule(p, v(46.0, 21.0), v(46.0, 26.0), 1.0), |_| INK);
+    cv
+}
+
+/// The red paper lantern hanging from its hook, 64x48. The hook's top sits at
+/// local (32, 4) — that's the swing pivot `render.rs` rotates around, so the
+/// lantern keeps its place on the pole and only the body sways.
+pub fn lantern() -> Canvas {
+    let mut cv = Canvas::new(64, 48);
+    // Hook hanging from the crossarm above.
+    cv.fill(|p| capsule(p, v(32.0, 4.0), v(32.0, 9.0), 1.0), |_| INK);
     // Dark top and bottom caps.
-    cv.solid(|p| rbox(p, 35.0, 26.0, 22.0, 5.0, 2.5), BROWN_D, 1.2);
-    cv.solid(|p| rbox(p, 35.0, 51.0, 22.0, 5.0, 2.5), BROWN_D, 1.2);
+    cv.solid(|p| rbox(p, 21.0, 9.0, 22.0, 5.0, 2.5), BROWN_D, 1.2);
+    cv.solid(|p| rbox(p, 21.0, 34.0, 22.0, 5.0, 2.5), BROWN_D, 1.2);
     // Big oval lacquer body: saturated rose-red with a bright warm core that
     // fades to the paper at the rim, so the lantern visibly glows.
-    cv.shape(|p| ellipse(p, v(46.0, 35.0), v(15.0, 19.0)), move |p| {
-        let d = ((p - v(46.0, 35.0)) / v(15.0, 19.0)).length();
-        let paper = mix(ROOF_LIGHT, ROOF, ((p.y - 16.0) / 38.0).clamp(0.0, 1.0));
+    cv.shape(|p| ellipse(p, v(32.0, 18.0), v(15.0, 19.0)), move |p| {
+        let d = ((p - v(32.0, 18.0)) / v(15.0, 19.0)).length();
+        let paper = mix(ROOF_LIGHT, ROOF, ((p.y + 1.0) / 38.0).clamp(0.0, 1.0));
         let core = 1.0 - smooth(0.15, 0.62, d);
         mix(paper, LAMP_INNER, core * 0.85)
     }, 1.6);
     // Faint vertical ribs across the body (kept off the bright core).
     for k in [-3, -1, 1, 3] {
-        let rx = 46.0 + k as f32 * 2.5;
-        let top = 32.0 + (k as f32 * 0.5);
-        let bot = 38.0 - (k as f32 * 0.5);
+        let rx = 32.0 + k as f32 * 2.5;
+        let top = 15.0 + (k as f32 * 0.5);
+        let bot = 21.0 - (k as f32 * 0.5);
         cv.fill(move |p| capsule(p, v(rx, top), v(rx, bot), 0.7), |_| with_alpha(ROOF_SHADE, 0.32));
     }
     // Little tassel under the bottom cap.
-    cv.fill(|p| capsule(p, v(46.0, 56.0), v(46.0, 60.0), 0.9), |_| INK);
+    cv.fill(|p| capsule(p, v(32.0, 39.0), v(32.0, 43.0), 0.9), |_| INK);
     cv
 }
 
@@ -1429,6 +1437,67 @@ pub fn cloud() -> Canvas {
         let a = smooth(0.25, 0.7, t * 0.8 + n * 0.5 - 0.1);
         with_alpha(CLOUD, a)
     });
+    cv
+}
+
+pub fn steam() -> Canvas {
+    let mut cv = Canvas::new(64, 64);
+    let c = v(32.0, 32.0);
+    let blobs = [(v(0.0, 2.0), 16.0), (v(-9.0, -3.0), 11.0), (v(9.0, -4.0), 12.0), (v(0.0, -9.0), 10.0)];
+    for &(d, r) in &blobs {
+        let cc = c + d;
+        cv.fill(move |p| circle(p, cc, r), move |p| {
+            let t = (1.0 - p.distance(cc) / r).max(0.0);
+            with_alpha(WHITE, 0.4 * t * t * (3.0 - 2.0 * t))
+        });
+    }
+    cv
+}
+
+/// A butterfly seen from above: a dark body with two pairs of wings. `frame`
+/// flaps the wings (0 = spread, 1 = raised). Wings are painted near-white so
+/// the game's pastel tint colours each butterfly.
+pub fn butterfly(frame: u32) -> Canvas {
+    let mut cv = Canvas::new(32, 32);
+    // Slim dark body along the vertical axis, with two antennae.
+    cv.solid(move |p| capsule(p, v(16.0, 12.0), v(16.0, 20.0), 1.3), INK, 1.0);
+    for s in [-1.0f32, 1.0] {
+        cv.fill(move |p| capsule(p, v(16.0, 12.0), v(16.0 + s * 2.5, 9.0), 0.5), |_| INK);
+    }
+    let flap = if frame == 0 { 1.0 } else { 0.45 };
+    for s in [-1.0f32, 1.0] {
+        let dir = s;
+        cv.solid(move |p| ellipse(p, v(16.0 + dir * 4.0, 14.5), v(9.0 * flap, 5.0)), WHITE, 1.0);
+        cv.solid(move |p| ellipse(p, v(16.0 + dir * 3.0, 18.5), v(6.5 * flap, 3.6)), WHITE, 1.0);
+    }
+    cv
+}
+
+/// A single pastel-pink petal, pointed at the top.
+pub fn petal() -> Canvas {
+    let mut cv = Canvas::new(16, 16);
+    let c = v(8.0, 8.0);
+    let petal = move |p: Vec2| ellipse(p, c, v(3.6, 6.0));
+    cv.shadow(petal, v(0.5, 1.0), 1.0, 0.2);
+    cv.shape(petal, move |p| mix(lit(FLOWER_PINK, 1.12), FLOWER_PINK, ((p.y - 2.0) / 12.0).clamp(0.0, 1.0)), 0.8);
+    cv.fill(move |p| capsule(p, v(8.0, 14.0), v(8.0, 3.0), 0.4), |_| with_alpha(WHITE, 0.35));
+    cv
+}
+
+/// A V-shaped bird shadow seen from above: a short body with two wings swept
+/// back. Painted as a soft dark cloud, so the game can draw it at low alpha.
+pub fn bird_shadow() -> Canvas {
+    let mut cv = Canvas::new(160, 64);
+    let head = v(140.0, 32.0);
+    let body_tail = v(70.0, 32.0);
+    let strokes = [(body_tail, head, 7.0), (body_tail, v(18.0, 10.0), 6.0), (body_tail, v(18.0, 54.0), 6.0)];
+    let dark = hex(crate::theme::SHADOW);
+    for &(a, b, r) in &strokes {
+        cv.fill(move |p| capsule(p, a, b, r), move |p| {
+            let d = capsule(p, a, b, r);
+            with_alpha(dark, smooth(r * 0.5, -r * 0.5, d) * 0.85)
+        });
+    }
     cv
 }
 
