@@ -52,7 +52,21 @@ sunny, a bit of B**, and turn into the lantern market every evening.
    - soft rounded corners
    - dark ink text, with red and gold accents
    This replaces today's dark plum boxes.
-6. **Happy and calm.** Overall saturation is pastel-soft but cheerful. Nothing grimy or dark.
+6. **Font: M PLUS Rounded 1c** (owner's choice), replacing Nunito. It must be clearly more
+   readable than today.
+   - Today's `assets/fonts/Nunito.ttf` is a *variable* font. macroquad only uses its default
+     instance, ExtraLight (weight 200), which is why text looks thin and faint.
+   - Ship **static** M PLUS Rounded 1c files (SIL OFL), with their licence, in `assets/fonts/`.
+     Body text uses Medium (500); titles and headings use Bold (700). Remove Nunito.
+   - Text is rasterised at **physical** size: font size × `ui_scale()`, drawn with
+     `font_scale = 1 / ui_scale()`, so it stays sharp on 1440p and 4K instead of being drawn
+     small and scaled up. Measuring (`text_w`, `text_in`, etc.) must use the same scaling, so
+     layouts don't shift.
+   - Text sizes in `TextSize` may be nudged up by a pixel or so if M PLUS reads small, as long
+     as nothing overflows its panel.
+   - The font files may be subset to the glyphs the game uses (Latin + symbols such as
+     `·`, `×`, `→`) to keep the binary small. That's the builder's call.
+7. **Happy and calm.** Overall saturation is pastel-soft but cheerful. Nothing grimy or dark.
 
 ## Non-goals
 
@@ -91,12 +105,13 @@ sunny, a bit of B**, and turn into the lantern market every evening.
   grain removal and the new music.
 - Existing tests (`cargo test --release`) must keep passing. The game must build without new
   warnings.
-- No new dependencies.
+- No new crate dependencies. New font files are assets, not dependencies.
 
 ## Decided by the owner
 
 - Direction A (lantern market at dusk) as the core look.
 - Bright sunny days with a bit of direction B, turning into the lantern market each evening.
+- Font: M PLUS Rounded 1c (picked from `docs/superpowers/specs/assets/2026-11-01-font-options.html`).
 - Restyle all buildings: red roofs on the house-like machines, everything else repainted to
   match (see goal 3).
 - Cream paper + lacquer-red trim UI (as in mockup A). The mockups the owner picked from are
@@ -141,5 +156,6 @@ sunny, a bit of B**, and turn into the lantern market every evening.
 - All panels (HUD, hotbar, inventory, research, building panels, tooltips, toasts, help, radio
   widget, minimap frame) use the cream-paper/red-trim look, are upright, and respond to clicks
   in the right places.
+- All text uses M PLUS Rounded 1c, looks solid (not hairline) and sharp at 1440p.
 - No grain or per-frame noise anywhere.
 - Tests pass. Assets are regenerated and committed.

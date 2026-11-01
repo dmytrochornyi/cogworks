@@ -1,0 +1,81 @@
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@200;700&family=M+PLUS+Rounded+1c:wght@500;700&family=Fredoka:wght@500;600&family=Lexend:wght@500;600&display=swap" rel="stylesheet">
+<style>
+  .panel { background:#f6ead2; border:3px solid #c8453a; border-radius:12px; padding:14px 16px; color:#3b2a2e; box-shadow:0 3px 0 #9b3a30; }
+  .panel h4 { margin:0 0 6px; font-size:26px; color:#a8352b; font-weight:inherit; }
+  .panel .row { font-size:17px; line-height:1.55; }
+  .panel .key { color:#b8862a; }
+  .panel .dim { color:#7a6266; font-size:15px; }
+  .slotrow { display:flex; gap:6px; margin-top:10px; }
+  .slot { width:44px; height:44px; border-radius:8px; background:#e6d2ae; position:relative; }
+  .slot b { position:absolute; right:4px; bottom:2px; font-size:14px; color:#3b2a2e; }
+  .f-now { font-family:'Nunito'; font-weight:200; }
+  .f-a { font-family:'Nunito'; font-weight:700; }
+  .f-b { font-family:'M PLUS Rounded 1c'; font-weight:500; }
+  .f-b h4 { font-weight:700; }
+  .f-c { font-family:'Fredoka'; font-weight:500; }
+  .f-c h4 { font-weight:600; }
+  .f-d { font-family:'Lexend'; font-weight:500; }
+</style>
+
+<h2>Which font reads best and feels right?</h2>
+<p class="subtitle">The same panel in each font, at the game's real text sizes, on the new cream paper. The current font is shown first for comparison.</p>
+
+<div class="cards">
+
+  <div class="card" data-choice="current" onclick="toggleSelect(this)">
+    <div class="card-image"><div class="panel f-now">
+      <h4>Welcome to Cogworks</h4>
+      <div class="row"><span class="key">WASD</span> walk &nbsp; <span class="key">E</span> backpack &amp; workbench</div>
+      <div class="row">Arms carry things from behind them to the front.</div>
+      <div class="dim">Golden hour · Hives 0% · Iron plate ×24</div>
+      <div class="slotrow"><div class="slot"><b>60</b></div><div class="slot"><b>12</b></div><div class="slot"><b>3</b></div></div>
+    </div></div>
+    <div class="card-body"><h3>Today: Nunito ExtraLight</h3><p>What the game draws now, by accident. Thin and faint.</p></div>
+  </div>
+
+  <div class="card" data-choice="nunito-bold" onclick="toggleSelect(this)">
+    <div class="card-image"><div class="panel f-a">
+      <h4>Welcome to Cogworks</h4>
+      <div class="row"><span class="key">WASD</span> walk &nbsp; <span class="key">E</span> backpack &amp; workbench</div>
+      <div class="row">Arms carry things from behind them to the front.</div>
+      <div class="dim">Golden hour · Hives 0% · Iron plate ×24</div>
+      <div class="slotrow"><div class="slot"><b>60</b></div><div class="slot"><b>12</b></div><div class="slot"><b>3</b></div></div>
+    </div></div>
+    <div class="card-body"><h3>A · Nunito, proper weight</h3><p>Same friendly rounded font, just drawn at a solid weight. Smallest change.</p></div>
+  </div>
+
+  <div class="card" data-choice="mplus-rounded" onclick="toggleSelect(this)">
+    <div class="card-image"><div class="panel f-b">
+      <h4>Welcome to Cogworks</h4>
+      <div class="row"><span class="key">WASD</span> walk &nbsp; <span class="key">E</span> backpack &amp; workbench</div>
+      <div class="row">Arms carry things from behind them to the front.</div>
+      <div class="dim">Golden hour · Hives 0% · Iron plate ×24</div>
+      <div class="slotrow"><div class="slot"><b>60</b></div><div class="slot"><b>12</b></div><div class="slot"><b>3</b></div></div>
+    </div></div>
+    <div class="card-body"><h3>B · M PLUS Rounded 1c</h3><p>A soft rounded font from a Japanese type family. Clean and calm, with a gentle signage feel that suits the lantern market.</p></div>
+  </div>
+
+  <div class="card" data-choice="fredoka" onclick="toggleSelect(this)">
+    <div class="card-image"><div class="panel f-c">
+      <h4>Welcome to Cogworks</h4>
+      <div class="row"><span class="key">WASD</span> walk &nbsp; <span class="key">E</span> backpack &amp; workbench</div>
+      <div class="row">Arms carry things from behind them to the front.</div>
+      <div class="dim">Golden hour · Hives 0% · Iron plate ×24</div>
+      <div class="slotrow"><div class="slot"><b>60</b></div><div class="slot"><b>12</b></div><div class="slot"><b>3</b></div></div>
+    </div></div>
+    <div class="card-body"><h3>C · Fredoka</h3><p>Chunky, bubbly and playful. The happiest-looking option, slightly less neat for long text.</p></div>
+  </div>
+
+  <div class="card" data-choice="lexend" onclick="toggleSelect(this)">
+    <div class="card-image"><div class="panel f-d">
+      <h4>Welcome to Cogworks</h4>
+      <div class="row"><span class="key">WASD</span> walk &nbsp; <span class="key">E</span> backpack &amp; workbench</div>
+      <div class="row">Arms carry things from behind them to the front.</div>
+      <div class="dim">Golden hour · Hives 0% · Iron plate ×24</div>
+      <div class="slotrow"><div class="slot"><b>60</b></div><div class="slot"><b>12</b></div><div class="slot"><b>3</b></div></div>
+    </div></div>
+    <div class="card-body"><h3>D · Lexend</h3><p>Designed specifically for easy reading. Very clear and open, less cute.</p></div>
+  </div>
+
+</div>
