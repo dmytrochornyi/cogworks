@@ -81,6 +81,7 @@ impl Assets {
                 uniforms: vec![
                     UniformDesc::new("Params", UniformType::Float4),
                     UniformDesc::new("Tint", UniformType::Float4),
+                    UniformDesc::new("Ambient", UniformType::Float4),
                     UniformDesc::new("Screen", UniformType::Float2),
                 ],
                 textures: vec!["Light".to_string()],
@@ -222,6 +223,10 @@ void main() {
 "#;
 
 /// The light map is stored at half intensity so lamps can push the image brighter than ambient.
+///
+/// The lighting + tint block mirrors `render::composite_rgb` exactly (same
+/// operations and constants) — keep the two in sync. After it come the
+/// unchanged grade steps: highlight roll-off, warm grade and vignette.
 const COMPOSITE: &str = r#"#version 100
 #ifdef GL_FRAGMENT_PRECISION_HIGH
 precision highp float;
@@ -231,13 +236,23 @@ precision mediump float;
 varying lowp vec2 uv;
 uniform sampler2D Texture;
 uniform sampler2D Light;
-uniform vec4 Params; // unused, unused, vignette, warmth
-uniform vec4 Tint; // mood tint: rgb colour, a strength
-uniform vec2 Screen; // framebuffer size (currently unused)
+uniform vec4 Params;   // unused, unused, vignette, warmth
+uniform vec4 Tint;     // mood tint: rgb colour, a strength
+uniform vec4 Ambient;  // ambient light (rgb), a unused — see render::composite_rgb
+uniform vec2 Screen;   // framebuffer size (currently unused)
 void main() {
     vec3 c = texture2D(Texture, uv).rgb;
-    vec3 l = texture2D(Light, uv).rgb * 2.0;
-    vec3 col = c * l;
+    vec3 l = texture2D(Light, uv).rgb;
+    // ---- composite_rgb (mirrors render::composite_rgb — keep in sync) ----
+    vec3 full = l * 2.0;
+    vec3 col = c * full;
+    float llum = dot(full, vec3(0.299, 0.587, 0.114));
+    float alum = dot(Ambient.rgb, vec3(0.299, 0.587, 0.114));
+    float lamp_share = clamp((llum - alum) / max(llum, 0.0001), 0.0, 1.0);
+    float strength = Tint.a * (1.0 - lamp_share);
+    col = mix(col, col * Tint.rgb * 1.6 + Tint.rgb * 0.08, strength);
+    col += max(full - Ambient.rgb, 0.0) * 0.30;
+    // ---- unchanged grade: highlight roll-off, warm grade, vignette ----
     // Soft highlight roll-off so bright lamps bloom into cream instead of clipping.
     col = col / (1.0 + max(col - 0.85, 0.0) * 0.8);
     // Warm grade: lavender-lifted shadows, honeyed highlights.
@@ -245,12 +260,6 @@ void main() {
     col = mix(col, col * vec3(1.06, 1.0, 0.88), Params.w);
     col += vec3(0.03, 0.025, 0.06) * (1.0 - luma);
     col = mix(vec3(luma), col, 0.90);
-    // Mood tint, mostly into shadows and midtones, and scaled by how dark the
-    // light map is (1 - light luminance) so lamp-lit pools stay warm peach
-    // instead of being pulled toward the lavender-pink tint.
-    float tluma = dot(col, vec3(0.299, 0.587, 0.114));
-    float lluma = dot(l, vec3(0.299, 0.587, 0.114));
-    col = mix(col, col * Tint.rgb * 1.6 + Tint.rgb * 0.08, Tint.a * (1.0 - tluma * 0.5) * clamp(1.0 - lluma, 0.0, 1.0));
     vec2 d = uv - 0.5;
     col *= 1.0 - dot(d, d) * Params.z;
     gl_FragColor = vec4(col, 1.0);

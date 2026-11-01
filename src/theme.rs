@@ -84,10 +84,10 @@ pub fn saturation(hex: u32) -> f32 {
 
 /// The warm lo-fi grade used by the world shader, applied to flat images too.
 /// Keeps the minimap's greens in the same light as the ground they represent.
-/// `tint` is the mood tint from `sky_at_phase` (rgb colour, strength in alpha),
-/// mirroring the `Tint` uniform in `COMPOSITE`: applied mostly into shadows and
-/// midtones, and scaled by the source pixel's darkness (the light-map proxy for
-/// a flat image) so bright/lit areas keep their warmth instead of going pink.
+/// `tint` is the mood tint from `sky_at_phase` (rgb colour, strength in alpha).
+/// The mood-tint maths mirrors `render::composite_rgb` (and the `COMPOSITE`
+/// shader) for the unlit case — a flat image has no lamp light, so `lamp_share`
+/// is 0 and the tint applies at its full strength.
 pub fn grade(c: Color, tint: Color) -> Color {
     let luma = 0.299 * c.r + 0.587 * c.g + 0.114 * c.b;
     let warm = Color::new(c.r * 1.06, c.g, c.b * 0.88, c.a);
@@ -96,10 +96,9 @@ pub fn grade(c: Color, tint: Color) -> Color {
     out.r = (out.r + 0.030 * shadow).min(1.0);
     out.g = (out.g + 0.025 * shadow).min(1.0);
     out.b = (out.b + 0.060 * shadow).min(1.0);
-    // Mood tint, same maths as COMPOSITE: mix into shadows and midtones, and
-    // scaled by `shadow` (dark areas get the tint, lit areas stay warm).
-    let tluma = 0.299 * out.r + 0.587 * out.g + 0.114 * out.b;
-    let amount = tint.a * (1.0 - tluma * 0.5) * shadow;
+    // Mood tint, same maths as composite_rgb: mix toward `col * tint * 1.6 +
+    // tint * 0.08` at full strength (no lamp to fade it, so lamp_share = 0).
+    let amount = tint.a;
     let tinted = Color::new(
         out.r * tint.r * 1.6 + tint.r * 0.08,
         out.g * tint.g * 1.6 + tint.g * 0.08,
