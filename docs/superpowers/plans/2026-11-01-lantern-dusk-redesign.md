@@ -378,4 +378,5 @@ Spec "Revision" item 7. Everything is slow and smooth, never flickery.
     - the lamp pool reads whitish pink instead of warm peach
     
     Reduce the tint strength by about 35%, and scale the tint by `(1 - light_luminance)` in `COMPOSITE` so lamp-lit areas stay peach. Keep some green in the grass at golden hour (green channel ≥ 0.75 × red on `MEADOW_400`). Mirror the change in `theme::grade()`. The existing sky tests must still pass.
+  - Iron ore reads almost as dark as coal. Make iron a lighter blue-grey with brighter silver facets, so the two are distinct by value as well as by shape.
 - [ ] **Step 5:** Fix anything else that fails, then commit: `chore: lantern-dusk redesign polish`.
