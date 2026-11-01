@@ -14,6 +14,7 @@ use super::metrics::{ui_height, ui_width};
 use super::primitives::{Elevation, clicked, hovered, rrect, rrect_lines, surface, surface_alpha};
 use super::style::{GAP, HONEY, KEY, LINE, PEACH, QUICK_SLOT, SLOT, TERRA, TEAL, TEXT, TEXT_DIM, TITLE};
 use super::text::{text, text_keys, text_w};
+use super::tooltip::Tip;
 use super::widgets::{bar, slot};
 
 pub(super) fn hud(g: &mut Game) {
@@ -76,7 +77,7 @@ pub(super) fn quickbar(g: &mut Game) {
         if hovered(r)
             && let Some(i) = item
         {
-            g.tooltip = vec![i.name().to_string(), format!("Key {}", (k + 1) % 10)];
+            g.tooltip = Some(Tip::Lines(vec![i.name().to_string(), format!("Key {}", (k + 1) % 10)]));
         }
         if clicked(r) {
             g.select_slot(k);
@@ -102,7 +103,7 @@ pub(super) fn craft_queue(g: &mut Game) {
             bar(Rect::new(r.x + 5.0, r.bottom() - 8.0, r.w - 10.0, 4.0), c.progress / rec.time, HONEY);
         }
         if hovered(r) {
-            g.tooltip = vec![rec.name.to_string()];
+            g.tooltip = Some(Tip::Lines(vec![rec.name.to_string()]));
         }
         if clicked(r) {
             cancel = Some(k);

@@ -20,10 +20,11 @@ pub use metrics::ui_mouse;
 pub use minimap::Minimap;
 pub use panels::inventory::hovered_inventory_item;
 pub use primitives::{circle, circle_lines, rrect, rrect_dashed_lines, rrect_lines};
+pub use tooltip::Tip;
 
 pub fn draw(g: &mut Game) {
     g.ui_rects.clear();
-    g.tooltip.clear();
+    g.tooltip = None;
     set_camera(&ui_camera(ui_width(), ui_height()));
 
     hud::hud(g);
@@ -36,8 +37,8 @@ pub fn draw(g: &mut Game) {
         OpenPanel::Building(id, _) => panels::building::building_panel(g, id),
         OpenPanel::None => {}
     }
-    if g.tooltip.is_empty() && !g.mouse_over_ui() && g.tool.is_none() {
-        g.tooltip = g.world.describe(g.mouse_tile());
+    if g.tooltip.is_none() && !g.mouse_over_ui() && g.tool.is_none() {
+        g.tooltip = Some(Tip::Lines(g.world.describe(g.mouse_tile())));
     }
     let a = g.assets.clone();
     hud::radio(g, &a);
@@ -46,6 +47,6 @@ pub fn draw(g: &mut Game) {
         hud::help(g, &a);
     }
     hud::overlays(g, &a);
-    tooltip::draw_tooltip(&a, &g.tooltip);
+    tooltip::draw_tooltip(&a, &g.world, &g.tooltip);
     set_default_camera();
 }

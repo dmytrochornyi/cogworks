@@ -42,8 +42,8 @@ pub struct Game {
     pub paused: bool,
     /// Screen areas covered by UI last frame; clicks there don't reach the map.
     pub ui_rects: Vec<Rect>,
-    /// Tooltip lines collected while drawing UI, drawn last so they sit on top.
-    pub tooltip: Vec<String>,
+    /// Tooltip collected while drawing UI, drawn last so it sits on top.
+    pub tooltip: Option<ui::Tip>,
     /// Scroll offset of the research grid, in logical UI pixels.
     pub research_scroll: f32,
     pub(crate) deconstruct: Option<(IVec2, f32)>,
@@ -80,7 +80,7 @@ impl Game {
             show_pollution: false,
             paused: false,
             ui_rects: Vec::new(),
-            tooltip: Vec::new(),
+            tooltip: None,
             research_scroll: 0.0,
             deconstruct: None,
             minimap: ui::Minimap::new(),

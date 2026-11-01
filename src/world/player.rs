@@ -266,6 +266,22 @@ impl World {
         self.plan_craft(&mut sim, recipe, &mut Vec::new(), 0)
     }
 
+    /// Whether the player can hand-craft enough of `item` to hold at least `n`,
+    /// reusing the workbench's auto-craft planning.
+    pub fn can_cover(&self, item: Item, n: u32) -> bool {
+        let Some(sub) = self.hand_recipe_for(item) else {
+            return false;
+        };
+        let mut sim = self.player.inv.clone();
+        let mut plan = Vec::new();
+        while sim.get(item) < n {
+            if !self.plan_craft(&mut sim, sub, &mut plan, 0) {
+                return false;
+            }
+        }
+        true
+    }
+
     fn hand_recipe_for(&self, item: Item) -> Option<usize> {
         (0..RECIPES.len()).find(|&r| {
             RECIPES[r].hand && RECIPES[r].main_output() == Some(item) && self.recipe_unlocked(r)

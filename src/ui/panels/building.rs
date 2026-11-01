@@ -12,7 +12,7 @@ use super::super::metrics::{ui_height, ui_width};
 use super::super::primitives::{clicked, hovered};
 use super::super::style::{GAP, HEADER, HONEY, KEY, MINIMAP, PEACH, SLOT, TEAL, TEXT, TEXT_DIM};
 use super::super::text::{text, text_w};
-use super::super::tooltip::recipe_lines;
+use super::super::tooltip::Tip;
 use super::super::widgets::{Panel, bar, button, primary_button, recipe_icon, slot, stock_lines};
 use super::{grid_rect, slide_px};
 
@@ -102,7 +102,7 @@ pub(crate) fn building_panel(g: &mut Game, id: usize) {
                 let sr = grid_rect(vec2(x, y), k, cols, SLOT);
                 recipe_icon(&a, sr, rid, c.recipe == Some(rid), false);
                 if hovered(sr) {
-                    g.tooltip = recipe_lines(&g.world, rid);
+                    g.tooltip = Some(Tip::Recipe(rid));
                 }
                 if clicked(sr) {
                     g.world.set_recipe(id, rid);
@@ -184,7 +184,7 @@ pub(crate) fn building_panel(g: &mut Game, id: usize) {
                 let sr = grid_rect(vec2(x, y), k, cols, SLOT);
                 slot(&a, sr, Some(item), Some(n), false, false);
                 if hovered(sr) {
-                    g.tooltip = vec![item.name().to_string(), "Click to take".into()];
+                    g.tooltip = Some(Tip::Lines(vec![item.name().to_string(), "Click to take".into()]));
                 }
                 if clicked(sr) {
                     take = Some((item, n));

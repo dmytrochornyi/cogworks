@@ -9,7 +9,7 @@ use crate::{Game, Panel as OpenPanel};
 use super::super::primitives::{clicked, hovered};
 use super::super::style::{EDGE, GAP, HEADER, SLOT, TEXT_DIM, TITLE};
 use super::super::text::text;
-use super::super::tooltip::recipe_lines;
+use super::super::tooltip::Tip;
 use super::super::widgets::{Panel, recipe_icon, slot};
 use super::{centered, grid_rect, slide_px};
 
@@ -59,7 +59,7 @@ pub(crate) fn inventory_panel(g: &mut Game) {
                 tip.push("Click to hold".into());
             }
             tip.push("Press 1–0 to put it on the quickbar".into());
-            g.tooltip = tip;
+            g.tooltip = Some(Tip::Lines(tip));
         }
         if clicked(sr) && item.place_kind().is_some() {
             g.tool = Some(item);
@@ -80,9 +80,7 @@ pub(crate) fn inventory_panel(g: &mut Game) {
         let can = g.world.can_craft(id);
         recipe_icon(&a, sr, id, false, !can);
         if hovered(sr) {
-            let mut tip = recipe_lines(&g.world, id);
-            tip.push("Click · craft 1   Shift-click · craft 5".into());
-            g.tooltip = tip;
+            g.tooltip = Some(Tip::Recipe(id));
         }
         if clicked(sr)
             && let Err(e) = g.world.queue_craft(id, if shift { 5 } else { 1 })
