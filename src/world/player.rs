@@ -28,6 +28,13 @@ pub struct Player {
     /// Movement input for this tick, set by the game loop.
     #[serde(skip)]
     pub walk: Vec2,
+    /// Tiles actually walked so far (after collision), driving the walk cycle.
+    #[serde(default)]
+    pub stride: f32,
+    /// Last frame's actual velocity in tiles/second, so leaning and the walk
+    /// cycle reflect real movement (pushing a wall doesn't animate). Not saved.
+    #[serde(skip)]
+    pub vel: Vec2,
     /// Hand-mining progress on a tile.
     #[serde(skip)]
     pub mining: Option<(IVec2, f32)>,
@@ -84,6 +91,8 @@ impl Player {
             queue: VecDeque::new(),
             quickbar,
             walk: Vec2::ZERO,
+            stride: 0.0,
+            vel: Vec2::ZERO,
             mining: None,
             calm: 100.0,
             respawn: 0.0,
@@ -156,6 +165,12 @@ impl World {
         let p = if self.blocked(x) { p } else { x };
         let y = p + vec2(0.0, step.y);
         self.player.pos = if self.blocked(y) { p } else { y };
+        // Accumulate the distance actually moved (after collision) and keep the
+        // real velocity, so the walk animation follows feet on the ground rather
+        // than the requested step (pushing a wall doesn't walk).
+        let moved = self.player.pos - p;
+        self.player.stride += moved.length();
+        self.player.vel = if dt > 0.0 { moved / dt } else { Vec2::ZERO };
     }
 
     fn update_crafting(&mut self, dt: f32) {

@@ -112,6 +112,10 @@ pipe_hub 64 64
 pipe_seg 32 24
 player_0 64 64
 player_1 64 64
+player_walk_0 64 64
+player_walk_1 64 64
+player_walk_2 64 64
+player_walk_3 64 64
 pole 64 112
 port_in 24 24
 port_out 24 24

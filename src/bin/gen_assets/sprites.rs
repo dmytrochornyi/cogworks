@@ -1208,6 +1208,43 @@ pub fn player(frame: u32) -> Canvas {
     let bob = frame as f32 * 1.5;
     let c = v(32.0, 32.0 - bob);
     ground_shadow(&mut cv, v(32.0, 50.0), v(15.0, 5.0), 0.35);
+    player_body(&mut cv, c, bob);
+    cv
+}
+
+/// The walk-cycle frames: the same body with two little feet and a tiny arm
+/// swing. Contact frames (0, 2) plant one foot ahead of the other; passing
+/// frames (1, 3) bring them together. The renderer supplies bob, lean and
+/// squash, so the body stays centred here.
+pub fn player_walk(frame: u32) -> Canvas {
+    let mut cv = Canvas::new(64, 64);
+    let c = v(32.0, 32.0);
+    ground_shadow(&mut cv, v(32.0, 50.0), v(15.0, 5.0), 0.35);
+    // +1 / -1 through the cycle: which foot is forward.
+    let step = match frame % 4 {
+        0 => 1.0,
+        1 => 0.0,
+        2 => -1.0,
+        _ => 0.0,
+    };
+    // Little feet at the bottom, alternating forward (up) and back (down).
+    for side in [-1.0f32, 1.0] {
+        let x = c.x + side * 8.0;
+        let y = c.y + 19.0 - side * step * 3.0;
+        cv.solid(move |p| capsule(p, v(x, y - 2.0), v(x, y + 4.0), 2.4), INK, 0.8);
+    }
+    // Tiny arms swinging on the sides, opposite to the same-side foot.
+    for side in [-1.0f32, 1.0] {
+        let shoulder = v(c.x + side * 13.0, c.y + 1.0);
+        let hand = v(c.x + side * 17.0, c.y + 1.0 + side * step * 3.0);
+        cv.solid(move |p| capsule(p, shoulder, hand, 1.9), INK, 0.6);
+    }
+    player_body(&mut cv, c, 0.0);
+    cv
+}
+
+/// Body, scarf, visor, eyes and antenna shared by the idle and walk sprites.
+fn player_body(cv: &mut Canvas, c: Vec2, bob: f32) {
     // Antenna with a little glowing bulb.
     let tip = c + v(9.0, -22.0 + bob * 0.5);
     cv.solid(move |p| capsule(p, c + v(5.0, -12.0), tip, 1.4), BROWN_D, 0.0);
@@ -1222,7 +1259,6 @@ pub fn player(frame: u32) -> Canvas {
         cv.fill(move |p| circle(p, c + v(dx, -3.5), 2.2), |_| LAMP);
     }
     cv.fill(move |p| circle(p, c + v(-8.0, -12.0), 2.5), |_| with_alpha(WHITE, 0.6));
-    cv
 }
 
 pub fn mite(frame: u32, brute: bool) -> Canvas {

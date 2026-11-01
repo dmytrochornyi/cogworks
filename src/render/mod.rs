@@ -35,6 +35,8 @@ use lights::{draw_lights, light};
 use overlays::{draw_clouds, draw_pollution};
 use particles::{PKind, Particle, SpawnEnv, advance_particles, butterfly_color, spawn_particles, vent_rate};
 
+use actors::walk_footfalls;
+
 /// Sprite pixels per tile.
 const PX: f32 = 64.0;
 const WIND: Vec2 = Vec2::new(0.35, -0.12);
@@ -112,11 +114,13 @@ pub struct Renderer {
     rng: u64,
     /// Seconds until the next bird shadow crosses the view.
     bird_timer: f32,
+    /// Footfall pairs seen so far, so a dust puff fires once per pair.
+    player_foot_pairs: u64,
 }
 
 impl Renderer {
     pub fn new() -> Self {
-        Renderer { world_rt: None, light_rt: None, rt_size: (0, 0), particles: Vec::new(), rng: 0x1234_5678, bird_timer: 6.0 }
+        Renderer { world_rt: None, light_rt: None, rt_size: (0, 0), particles: Vec::new(), rng: 0x1234_5678, bird_timer: 6.0, player_foot_pairs: 0 }
     }
 
     fn ensure_targets(&mut self) {
@@ -153,7 +157,17 @@ impl Renderer {
         }
         let half = Cam::half_screen() / cam.zoom;
         let shot_pos: Vec<Vec2> = world.shots.iter().map(|s| s.to).collect();
-        let env = SpawnEnv { dt, night, cam_pos: cam.pos, half, vents: &vents, furnaces: &furnaces, shots: &shot_pos };
+        // Dust puffs under the player's feet, once per pair of footfalls. Stride
+        // only advances on real movement, so standing still never puffs.
+        let mut footfalls = Vec::new();
+        if world.player.alive() {
+            let pairs = walk_footfalls(world.player.stride) / 2;
+            if pairs > self.player_foot_pairs {
+                footfalls.push(world.player.pos + vec2(0.0, 0.25));
+            }
+            self.player_foot_pairs = pairs;
+        }
+        let env = SpawnEnv { dt, night, cam_pos: cam.pos, half, vents: &vents, furnaces: &furnaces, shots: &shot_pos, footfalls: &footfalls };
         spawn_particles(&mut self.rng, &mut self.particles, &env, &mut self.bird_timer);
     }
 
@@ -219,6 +233,12 @@ impl Renderer {
                     let grow = 1.0 - f;
                     let size = (p.size + grow * 0.8) * z;
                     a.draw_centered("steam", s, Vec2::splat(size), p.seed * TAU, rgba(WHITE, f * 0.6));
+                }
+                PKind::Dust => {
+                    // Small, short-lived dirt puff under the player's feet.
+                    let grow = 1.0 - f;
+                    let size = (p.size + grow * 0.5) * z;
+                    a.draw_centered("steam", s, Vec2::splat(size), p.seed * TAU, theme::alpha(theme::DIRT, f * 0.35));
                 }
                 PKind::Firefly => draw_circle(s.x, s.y, 0.05 * z, theme::rgba(1.0, 1.0, 0.7, 0.9)),
                 PKind::Mote => draw_circle(s.x, s.y, 0.035 * z, theme::rgba(1.0, 0.95, 0.8, 0.45 * f.min(1.0 - f) * 2.0)),

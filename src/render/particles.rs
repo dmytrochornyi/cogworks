@@ -10,6 +10,7 @@ use super::WIND;
 #[derive(Clone, Copy, PartialEq)]
 pub(super) enum PKind {
     Steam,
+    Dust,
     Firefly,
     Mote,
     Spark,
@@ -64,6 +65,8 @@ pub(super) struct SpawnEnv<'a> {
     pub(super) vents: &'a [(Vec2, f32)],
     pub(super) furnaces: &'a [Vec2],
     pub(super) shots: &'a [Vec2],
+    /// Player footfall positions to puff dust at this frame.
+    pub(super) footfalls: &'a [Vec2],
 }
 
 /// Steam puff rate (puffs/second) per active machine, roughly matching how
@@ -87,6 +90,11 @@ fn kind_count(particles: &[Particle], kind: PKind) -> usize {
     particles.iter().filter(|p| p.kind == kind).count()
 }
 
+/// Steam and the player's footfall dust share the steam cap.
+fn steam_count(particles: &[Particle]) -> usize {
+    particles.iter().filter(|p| matches!(p.kind, PKind::Steam | PKind::Dust)).count()
+}
+
 /// Advances every particle and drops the dead ones. Pure, so the cap test can
 /// drive a whole minute of frames without a window.
 pub(super) fn advance_particles(particles: &mut Vec<Particle>, dt: f32) {
@@ -97,6 +105,10 @@ pub(super) fn advance_particles(particles: &mut Vec<Particle>, dt: f32) {
             PKind::Steam => {
                 p.vel += WIND * dt * 0.5 + vec2(0.0, -0.25) * dt;
                 p.vel.x *= 1.0 - dt * 0.4;
+            }
+            PKind::Dust => {
+                p.vel += WIND * dt * 0.3;
+                p.vel *= 1.0 - dt * 1.5;
             }
             PKind::Firefly | PKind::Mote => {
                 p.vel = Vec2::from_angle(p.seed + p.life * 0.9) * if p.kind == PKind::Mote { 0.25 } else { 0.5 };
@@ -118,9 +130,9 @@ pub(super) fn spawn_particles(rng: &mut u64, particles: &mut Vec<Particle>, env:
     let day = 1.0 - env.night;
 
     // Steam rises from active machines' vents, capped.
-    if kind_count(particles, PKind::Steam) < MAX_STEAM {
+    if steam_count(particles) < MAX_STEAM {
         for &(vent, rate) in env.vents {
-            if kind_count(particles, PKind::Steam) >= MAX_STEAM {
+            if steam_count(particles) >= MAX_STEAM {
                 break;
             }
             if rand01(rng) < rate * env.dt {
@@ -136,6 +148,24 @@ pub(super) fn spawn_particles(rng: &mut u64, particles: &mut Vec<Particle>, env:
                 });
             }
         }
+    }
+
+    // A soft dust puff under the player's feet, once per pair of footfalls.
+    // Small, short-lived and tinted dirt in the draw step; shares the steam cap.
+    for &foot in env.footfalls {
+        if steam_count(particles) >= MAX_STEAM {
+            break;
+        }
+        let (r1, r2) = (rand01(rng), rand01(rng));
+        particles.push(Particle {
+            pos: foot,
+            vel: vec2(r1 * 0.3 - 0.15, -0.2 - r2 * 0.2),
+            life: 0.5,
+            max: 0.5,
+            size: 0.16 + r1 * 0.08,
+            kind: PKind::Dust,
+            seed: r2,
+        });
     }
 
     // An occasional spark from a smelter's glowing furnace mouth.
@@ -240,12 +270,17 @@ mod tests {
                     vents: &vents,
                     furnaces: &furnaces,
                     shots: &[],
+                    footfalls: &[],
                 };
                 spawn_particles(&mut rng, &mut particles, &env, &mut bird);
                 advance_particles(&mut particles, dt);
             }
             let count = |k: PKind| particles.iter().filter(|p| p.kind == k).count();
             assert!(count(PKind::Steam) <= MAX_STEAM, "steam exceeded cap at night={night}");
+            assert!(
+                count(PKind::Steam) + count(PKind::Dust) <= MAX_STEAM,
+                "steam + dust exceeded the shared cap at night={night}"
+            );
             assert!(count(PKind::Butterfly) <= MAX_BUTTERFLIES, "butterflies exceeded cap at night={night}");
             assert!(count(PKind::Petal) <= MAX_PETALS, "petals exceeded cap at night={night}");
             assert!(count(PKind::Firefly) <= 20, "fireflies exceeded cap at night={night}");

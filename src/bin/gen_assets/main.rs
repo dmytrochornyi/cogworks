@@ -86,6 +86,9 @@ fn main() {
         add(&format!("mite_{f}"), sprites::mite(f, false));
         add(&format!("brute_{f}"), sprites::mite(f, true));
     }
+    for f in 0..4 {
+        add(&format!("player_walk_{f}"), sprites::player_walk(f));
+    }
     for item in ITEMS {
         add(&format!("item_{item}"), sprites::item(item));
     }
