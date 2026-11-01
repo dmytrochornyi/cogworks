@@ -100,6 +100,10 @@ fn main() {
     add("petal", sprites::petal());
     add("bird_shadow", sprites::bird_shadow());
     add("cloud", sprites::cloud());
+    add("cursor_point", sprites::cursor_point());
+    add("cursor_hand", sprites::cursor_hand());
+    add("cursor_build", sprites::cursor_build());
+    add("cursor_mine", sprites::cursor_mine());
     for icon in ["heart", "flask", "bolt", "note"] {
         add(&format!("icon_{icon}"), sprites::icon(icon));
     }

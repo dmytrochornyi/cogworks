@@ -90,6 +90,7 @@ pub(crate) fn research_panel(g: &mut Game) {
         if cr.bottom() < view.y - 100.0 || cr.y > view.bottom() + 100.0 {
             continue;
         }
+        g.clickables.push(cr);
         let done = g.world.research.done[k];
         let current = g.world.research.current == Some(k);
         let available = g.world.tech_available(k);

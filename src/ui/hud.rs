@@ -72,7 +72,7 @@ pub(super) fn quickbar(g: &mut Game) {
         let item = g.world.player.quickbar[k];
         let count = item.map(|i| g.world.player.inv.get(i));
         let selected = item.is_some() && g.tool == item;
-        slot(&a, r, item, count, selected, count == Some(0));
+        slot(&a, r, item, count, selected, count == Some(0), &mut g.clickables);
         text(&a, &((k + 1) % 10).to_string(), r.x + 5.0, r.y + 3.0, TextSize::Xs, TEXT_DIM);
         if hovered(r)
             && let Some(i) = item
@@ -98,7 +98,7 @@ pub(super) fn craft_queue(g: &mut Game) {
     for (k, c) in g.world.player.queue.iter().take(12).enumerate() {
         let r = Rect::new(x0 + k as f32 * (SLOT + GAP), y, SLOT, SLOT);
         let rec = &RECIPES[c.recipe];
-        slot(&a, r, rec.main_output(), None, k == 0, false);
+        slot(&a, r, rec.main_output(), None, k == 0, false, &mut g.clickables);
         if k == 0 {
             bar(Rect::new(r.x + 5.0, r.bottom() - 8.0, r.w - 10.0, 4.0), c.progress / rec.time, HONEY);
         }

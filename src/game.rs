@@ -42,6 +42,9 @@ pub struct Game {
     pub paused: bool,
     /// Screen areas covered by UI last frame; clicks there don't reach the map.
     pub ui_rects: Vec<Rect>,
+    /// Clickable UI controls (slots, buttons, recipe icons, cards); hovering
+    /// them shows the Hand cursor. Cleared each frame alongside `ui_rects`.
+    pub clickables: Vec<Rect>,
     /// Tooltip collected while drawing UI, drawn last so it sits on top.
     pub tooltip: Option<ui::Tip>,
     /// Scroll offset of the research grid, in logical UI pixels.
@@ -80,6 +83,7 @@ impl Game {
             show_pollution: false,
             paused: false,
             ui_rects: Vec::new(),
+            clickables: Vec::new(),
             tooltip: None,
             research_scroll: 0.0,
             deconstruct: None,

@@ -5,6 +5,7 @@ use std::f32::consts::{PI, TAU};
 use macroquad::math::{Vec2, vec2};
 
 use super::paint::*;
+use crate::theme;
 
 /// Outline width used by the large machine sprites, in native pixels.
 const OW: f32 = 2.5;
@@ -1563,6 +1564,71 @@ pub fn icon(name: &str) -> Canvas {
             cv.solid(|p| rbox(p, 13.0, 5.0, 3.0, 19.0, 1.0).min(rbox(p, 26.0, 3.0, 3.0, 18.0, 1.0)).min(rbox(p, 13.0, 3.0, 16.0, 5.0, 1.5)), BRASS, o);
         }
     }
+    cv
+}
+
+// ---------------------------------------------------------------- cursors
+
+/// Outline width for the cozy cursor sprites, in native pixels.
+const OW_CURSOR: f32 = 2.5;
+
+/// Wood-trim outline, soft shadow and paper fill shared by the cursor sprites.
+fn cursor_body(cv: &mut Canvas, sdf: impl Fn(Vec2) -> f32 + Copy, fill: impl Fn(Vec2) -> C) {
+    let outline = hex(theme::WOOD_TRIM);
+    cv.shadow(sdf, v(2.0, 3.0), 2.5, 0.35);
+    cv.fill(move |p| sdf(p) - OW_CURSOR, |_| outline);
+    cv.fill(sdf, fill);
+}
+
+/// A rounded arrow cursor: cream-paper fill, wood-trim outline and a dusty-rose
+/// tip. The arrow tip sits at the top-left hotspot (7, 7).
+pub fn cursor_point() -> Canvas {
+    let mut cv = Canvas::new(48, 48);
+    let sdf = |p: Vec2| poly(p, &[v(8.0, 7.0), v(30.0, 21.0), v(21.0, 26.0), v(21.0, 38.0), v(13.0, 38.0), v(13.0, 25.0), v(16.0, 15.0)]);
+    let fill = move |p: Vec2| mix(CREAM, PAPER, ((p.y - 7.0) / 31.0).clamp(0.0, 1.0));
+    cursor_body(&mut cv, sdf, fill);
+    // Dusty-rose lacquer tip.
+    cv.fill(move |p| poly(p, &[v(8.0, 7.0), v(20.0, 14.0), v(13.0, 16.0)]), |_| hex(theme::LACQUER_500));
+    cv
+}
+
+/// A soft mitten-like pointing hand in the same paper-and-wood style. The
+/// fingertip sits at the hotspot (9, 9).
+pub fn cursor_hand() -> Canvas {
+    let mut cv = Canvas::new(48, 48);
+    let finger = move |p: Vec2| capsule(p, v(9.0, 9.0), v(22.0, 23.0), 5.5);
+    let body = move |p: Vec2| circle(p, v(28.0, 33.0), 13.0);
+    let thumb = move |p: Vec2| capsule(p, v(21.0, 26.0), v(14.0, 36.0), 5.0);
+    let sdf = move |p: Vec2| finger(p).min(body(p)).min(thumb(p));
+    let fill = move |p: Vec2| mix(CREAM, PAPER, ((p.y - 9.0) / 30.0).clamp(0.0, 1.0));
+    cursor_body(&mut cv, sdf, fill);
+    cv
+}
+
+/// The point cursor plus a small brass "+" badge at the bottom-right.
+pub fn cursor_build() -> Canvas {
+    let mut cv = cursor_point();
+    let c = v(37.0, 37.0);
+    cv.shadow(move |p| circle(p, c, 8.0), v(1.0, 1.0), 1.5, 0.3);
+    cv.solid(move |p| circle(p, c, 7.0), BRASS, 1.2);
+    cv.solid(move |p| rbox(p, c.x - 4.0, c.y - 1.2, 8.0, 2.4, 0.6), CREAM, 0.0);
+    cv.solid(move |p| rbox(p, c.x - 1.2, c.y - 4.0, 2.4, 8.0, 0.6), CREAM, 0.0);
+    cv
+}
+
+/// A tiny pickaxe: a wooden handle under a brass head, for the mine cursor.
+/// The pick tip sits at the hotspot (8, 14).
+pub fn cursor_mine() -> Canvas {
+    let mut cv = Canvas::new(48, 48);
+    let outline = hex(theme::WOOD_TRIM);
+    let head = move |p: Vec2| capsule(p, v(7.0, 14.0), v(26.0, 19.0), 4.0);
+    let handle = move |p: Vec2| capsule(p, v(17.0, 16.0), v(29.0, 40.0), 3.2);
+    let sdf = move |p: Vec2| head(p).min(handle(p));
+    cv.shadow(sdf, v(2.0, 3.0), 2.5, 0.35);
+    cv.fill(move |p| sdf(p) - OW_CURSOR, |_| outline);
+    cv.fill(head, move |p| mix(BRASS, COPPER, ((p.x - 7.0) / 19.0).clamp(0.0, 1.0)));
+    cv.fill(handle, move |p| mix(WOOD, WOOD_DARK, ((p.y - 16.0) / 24.0).clamp(0.0, 1.0)));
+    cv.solid(move |p| circle(p, v(17.0, 16.0), 3.0), BRASS, 0.0);
     cv
 }
 

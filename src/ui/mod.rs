@@ -24,6 +24,7 @@ pub use tooltip::Tip;
 
 pub fn draw(g: &mut Game) {
     g.ui_rects.clear();
+    g.clickables.clear();
     g.tooltip = None;
     set_camera(&ui_camera(ui_width(), ui_height()));
 
@@ -48,5 +49,6 @@ pub fn draw(g: &mut Game) {
     }
     hud::overlays(g, &a);
     tooltip::draw_tooltip(&a, &g.world, &g.tooltip);
+    g.draw_ui_cursor();
     set_default_camera();
 }

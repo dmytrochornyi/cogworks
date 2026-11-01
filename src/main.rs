@@ -80,6 +80,14 @@ async fn main() {
             _ => Panel::None,
         };
     }
+    // Hide the OS cursor once, after the window opens; the cozy custom cursor
+    // (Task 9) replaces it.
+    show_mouse(false);
+    // Dev aid (screenshot mode only): `COGWORKS_MOUSE=x,y` places the mouse at
+    // logical UI coordinates to capture hover states, and `COGWORKS_MOUSE_DOWN=1`
+    // fakes the left press for the cursor squash. Read in `src/ui/metrics.rs`
+    // (`mouse_override`) and `src/cursor.rs` (`left_down_for_squash`); neither is
+    // fed into gameplay input.
     let mut frames = 0;
     let mut acc = 0.0;
     loop {

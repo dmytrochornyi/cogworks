@@ -100,7 +100,7 @@ pub(crate) fn building_panel(g: &mut Game, id: usize) {
             let cols = machine_cols(content.w);
             for (k, &rid) in recipes.iter().enumerate() {
                 let sr = grid_rect(vec2(x, y), k, cols, SLOT);
-                recipe_icon(&a, sr, rid, c.recipe == Some(rid), false);
+                recipe_icon(&a, sr, rid, c.recipe == Some(rid), false, &mut g.clickables);
                 if hovered(sr) {
                     g.tooltip = Some(Tip::Recipe(rid));
                 }
@@ -139,11 +139,11 @@ pub(crate) fn building_panel(g: &mut Game, id: usize) {
             } else if e.kind == Kind::Smelter {
                 text(&a, "Picks its recipe from the first ore it gets", x, y, TextSize::S, TEXT_DIM);
             }
-            if primary_button(&a, left_btn, "Insert ingredients", c.recipe.is_some()) {
+            if primary_button(&a, left_btn, "Insert ingredients", c.recipe.is_some(), &mut g.clickables) {
                 let n = g.world.insert_from_player(id);
                 g.toast(format!("Inserted {n} items"));
             }
-            if button(&a, right_btn, "Take output", c.out.total() > 0) {
+            if button(&a, right_btn, "Take output", c.out.total() > 0, &mut g.clickables) {
                 g.world.take_to_player(id);
             }
         }
@@ -160,7 +160,7 @@ pub(crate) fn building_panel(g: &mut Game, id: usize) {
             bar(Rect::new(x, y, content.w, 10.0), *progress, TEAL);
             y += 24.0;
             stock_lines(&a, input, x, &mut y);
-            if primary_button(&a, left_btn, "Insert data", true) {
+            if primary_button(&a, left_btn, "Insert data", true, &mut g.clickables) {
                 let n = g.world.insert_from_player(id);
                 g.toast(format!("Inserted {n} items"));
             }
@@ -170,7 +170,7 @@ pub(crate) fn building_panel(g: &mut Game, id: usize) {
             y += 26.0;
             stock_lines(&a, fuel, x, &mut y);
             text(&a, "Burns coal or fuel cells", x, y + 4.0, TextSize::S, TEXT_DIM);
-            if primary_button(&a, left_btn, "Add fuel", true) {
+            if primary_button(&a, left_btn, "Add fuel", true, &mut g.clickables) {
                 let n = g.world.insert_from_player(id);
                 g.toast(format!("Inserted {n} items"));
             }
@@ -182,7 +182,7 @@ pub(crate) fn building_panel(g: &mut Game, id: usize) {
             let mut take = None;
             for (k, (item, n)) in stock.iter().enumerate() {
                 let sr = grid_rect(vec2(x, y), k, cols, SLOT);
-                slot(&a, sr, Some(item), Some(n), false, false);
+                slot(&a, sr, Some(item), Some(n), false, false, &mut g.clickables);
                 if hovered(sr) {
                     g.tooltip = Some(Tip::Lines(vec![item.name().to_string(), "Click to take".into()]));
                 }
@@ -196,11 +196,11 @@ pub(crate) fn building_panel(g: &mut Game, id: usize) {
                 stock.take(item, n);
                 g.world.player.inv.add(item, n);
             }
-            if primary_button(&a, left_btn, "Store items", true) {
+            if primary_button(&a, left_btn, "Store items", true, &mut g.clickables) {
                 let n = g.world.insert_from_player(id);
                 g.toast(format!("Stored {n} items"));
             }
-            if button(&a, right_btn, "Take all", stock.total() > 0) {
+            if button(&a, right_btn, "Take all", stock.total() > 0, &mut g.clickables) {
                 g.world.take_to_player(id);
             }
         }
@@ -208,7 +208,7 @@ pub(crate) fn building_panel(g: &mut Game, id: usize) {
             text(&a, &format!("{shots} shots loaded"), x, y, TextSize::M, TEXT);
             y += 26.0;
             stock_lines(&a, ammo, x, &mut y);
-            if primary_button(&a, left_btn, "Load ammo", true) {
+            if primary_button(&a, left_btn, "Load ammo", true, &mut g.clickables) {
                 let n = g.world.insert_from_player(id);
                 g.toast(format!("Inserted {n} items"));
             }
@@ -221,7 +221,7 @@ pub(crate) fn building_panel(g: &mut Game, id: usize) {
                 *cores as f32 / ENGINE_CORES as f32,
                 theme::color(theme::AETHER_HI),
             );
-            if primary_button(&a, left_btn, "Feed cores", true) {
+            if primary_button(&a, left_btn, "Feed cores", true, &mut g.clickables) {
                 g.world.insert_from_player(id);
             }
         }
@@ -230,7 +230,7 @@ pub(crate) fn building_panel(g: &mut Game, id: usize) {
                 text(&a, line, x, y, TextSize::S, TEXT_DIM);
                 y += 24.0;
             }
-            if primary_button(&a, left_btn, "Take ore", !out.is_empty()) {
+            if primary_button(&a, left_btn, "Take ore", !out.is_empty(), &mut g.clickables) {
                 g.world.take_to_player(id);
             }
         }

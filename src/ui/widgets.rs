@@ -28,8 +28,9 @@ pub(super) enum ButtonKind {
     Secondary,
 }
 
-fn button_kind(a: &Assets, r: Rect, label: &str, enabled: bool, kind: ButtonKind) -> bool {
+fn button_kind(a: &Assets, r: Rect, label: &str, enabled: bool, kind: ButtonKind, clickables: &mut Vec<Rect>) -> bool {
     let hot = enabled && hovered(r);
+    clickables.push(r);
     let down = hot && is_mouse_button_down(MouseButton::Left);
     let lacquer = theme::color(theme::LACQUER_500);
     let lacquer_hot = theme::color(theme::LACQUER_400);
@@ -48,16 +49,17 @@ fn button_kind(a: &Assets, r: Rect, label: &str, enabled: bool, kind: ButtonKind
     enabled && clicked(r)
 }
 
-pub(super) fn button(a: &Assets, r: Rect, label: &str, enabled: bool) -> bool {
-    button_kind(a, r, label, enabled, ButtonKind::Secondary)
+pub(super) fn button(a: &Assets, r: Rect, label: &str, enabled: bool, clickables: &mut Vec<Rect>) -> bool {
+    button_kind(a, r, label, enabled, ButtonKind::Secondary, clickables)
 }
 
-pub(super) fn primary_button(a: &Assets, r: Rect, label: &str, enabled: bool) -> bool {
-    button_kind(a, r, label, enabled, ButtonKind::Primary)
+pub(super) fn primary_button(a: &Assets, r: Rect, label: &str, enabled: bool, clickables: &mut Vec<Rect>) -> bool {
+    button_kind(a, r, label, enabled, ButtonKind::Primary, clickables)
 }
 
-pub(super) fn slot(a: &Assets, r: Rect, item: Option<Item>, count: Option<u32>, selected: bool, unavailable: bool) -> bool {
+pub(super) fn slot(a: &Assets, r: Rect, item: Option<Item>, count: Option<u32>, selected: bool, unavailable: bool, clickables: &mut Vec<Rect>) -> bool {
     let hot = hovered(r);
+    clickables.push(r);
     // A warm paper "well" under the icon; hovering lightens it to the panel.
     let fill = if hot && !selected { BG } else { SLOT_WELL };
     rrect(r, radius::MD, fill);
@@ -91,9 +93,9 @@ pub(super) fn slot(a: &Assets, r: Rect, item: Option<Item>, count: Option<u32>, 
     clicked(r)
 }
 
-pub(super) fn recipe_icon(a: &Assets, r: Rect, recipe: usize, selected: bool, unavailable: bool) {
+pub(super) fn recipe_icon(a: &Assets, r: Rect, recipe: usize, selected: bool, unavailable: bool, clickables: &mut Vec<Rect>) {
     let rec = &RECIPES[recipe];
-    slot(a, r, rec.main_output(), None, selected, unavailable);
+    slot(a, r, rec.main_output(), None, selected, unavailable, clickables);
     if rec.main_output().is_none()
         && let Some((f, _)) = rec.fluid_out
     {
@@ -156,7 +158,7 @@ impl<'a> Panel<'a> {
             let cb = Rect::new(self.r.right() - space::L - 28.0, self.r.y + space::M, 28.0, 28.0);
             let hint = text_w(&a, "Esc", TextSize::Xs);
             text(&a, "Esc", cb.x - hint - space::S, self.r.y + space::L - 2.0, TextSize::Xs, KEY);
-            if button_kind(&a, cb, "x", true, ButtonKind::Secondary) {
+            if button_kind(&a, cb, "x", true, ButtonKind::Secondary, &mut g.clickables) {
                 closed = true;
             }
             g.ui_rects.push(cb);

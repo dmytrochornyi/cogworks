@@ -138,3 +138,7 @@ butterfly_1 32 32
 lantern 64 48
 petal 16 16
 steam 64 64
+cursor_point 48 48
+cursor_hand 48 48
+cursor_build 48 48
+cursor_mine 48 48

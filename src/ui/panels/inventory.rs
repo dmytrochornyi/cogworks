@@ -52,7 +52,7 @@ pub(crate) fn inventory_panel(g: &mut Game) {
     }
     for (item, sr) in inv_slots(g) {
         let n = g.world.player.inv.get(item);
-        slot(&a, sr, Some(item), Some(n), g.tool == Some(item), false);
+        slot(&a, sr, Some(item), Some(n), g.tool == Some(item), false, &mut g.clickables);
         if hovered(sr) {
             let mut tip = vec![item.name().to_string(), format!("{n} carried")];
             if item.place_kind().is_some() {
@@ -78,7 +78,7 @@ pub(crate) fn inventory_panel(g: &mut Game) {
     for (k, &id) in recipes.iter().enumerate() {
         let sr = grid_rect(origin, k, cols.min(8), SLOT);
         let can = g.world.can_craft(id);
-        recipe_icon(&a, sr, id, false, !can);
+        recipe_icon(&a, sr, id, false, !can, &mut g.clickables);
         if hovered(sr) {
             g.tooltip = Some(Tip::Recipe(id));
         }
