@@ -224,7 +224,7 @@ void main() {
 
 /// The light map is stored at half intensity so lamps can push the image brighter than ambient.
 ///
-/// The lighting + tint block mirrors `render::composite_rgb` exactly (same
+/// The lighting + tint block mirrors `render::sky::composite_rgb` exactly (same
 /// operations and constants) — keep the two in sync. After it come the
 /// unchanged grade steps: highlight roll-off, warm grade and vignette.
 const COMPOSITE: &str = r#"#version 100
@@ -238,12 +238,12 @@ uniform sampler2D Texture;
 uniform sampler2D Light;
 uniform vec4 Params;   // unused, unused, vignette, warmth
 uniform vec4 Tint;     // mood tint: rgb colour, a strength
-uniform vec4 Ambient;  // ambient light (rgb), a unused — see render::composite_rgb
+uniform vec4 Ambient;  // ambient light (rgb), a unused — see render::sky::composite_rgb
 uniform vec2 Screen;   // framebuffer size (currently unused)
 void main() {
     vec3 c = texture2D(Texture, uv).rgb;
     vec3 l = texture2D(Light, uv).rgb;
-    // ---- composite_rgb (mirrors render::composite_rgb — keep in sync) ----
+    // ---- composite_rgb (mirrors render::sky::composite_rgb — keep in sync) ----
     vec3 full = l * 2.0;
     vec3 col = c * full;
     float llum = dot(full, vec3(0.299, 0.587, 0.114));
