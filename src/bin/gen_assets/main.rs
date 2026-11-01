@@ -1,10 +1,9 @@
-//! Generates every sprite and sound for Cogworks into `assets/`, plus `src/assets_list.rs`
+//! Generates every sprite for Cogworks into `assets/`, plus `src/assets_list.rs`
 //! which embeds them in the game. Run with `cargo run --release --bin gen_assets`.
 
 #[path = "../../theme.rs"]
 mod theme;
 
-mod audio;
 mod paint;
 mod sprites;
 
@@ -20,11 +19,8 @@ const ITEMS: &[&str] = &[
     "optic_data", "quantum_data",
 ];
 
-const SFX: &[&str] = &["place", "pickup", "craft", "research", "shot", "click"];
-
 fn main() {
     fs::create_dir_all("assets/sprites").unwrap();
-    fs::create_dir_all("assets/audio").unwrap();
 
     let mut sheet: Vec<(String, Canvas)> = Vec::new();
     let mut add = |name: &str, cv: Canvas| sheet.push((name.to_string(), cv));
@@ -104,15 +100,7 @@ fn main() {
         cv.save(&format!("assets/sprites/{name}.png"));
         writeln!(list, "    (\"{name}\", include_bytes!(\"../assets/sprites/{name}.png\")),").unwrap();
     }
-    list.push_str("];\n\npub const SOUNDS: &[(&str, &[u8])] = &[\n");
-
-    audio::write_wav("assets/audio/music.wav", &audio::music());
-    writeln!(list, "    (\"music\", include_bytes!(\"../assets/audio/music.wav\")),").unwrap();
-    for name in SFX {
-        audio::write_wav(&format!("assets/audio/{name}.wav"), &audio::sfx(name));
-        writeln!(list, "    (\"{name}\", include_bytes!(\"../assets/audio/{name}.wav\")),").unwrap();
-    }
     list.push_str("];\n");
     fs::write("src/assets_list.rs", list).unwrap();
-    println!("Generated {} sprites and {} sounds.", sheet.len(), SFX.len() + 1);
+    println!("Generated {} sprites.", sheet.len());
 }

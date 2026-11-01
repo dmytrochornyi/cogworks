@@ -1,12 +1,11 @@
-//! Loads the generated sprites (packed into one atlas), sounds, font and shaders.
+//! Loads the generated sprites (packed into one atlas), font and shaders.
 
 use std::collections::HashMap;
 
-use macroquad::audio::{Sound, load_sound_from_bytes};
 use macroquad::miniquad::{BlendFactor, BlendState, BlendValue, Equation, PipelineParams};
 use macroquad::prelude::*;
 
-use crate::assets_list::{SOUNDS, SPRITES};
+use crate::assets_list::SPRITES;
 
 const ATLAS: u32 = 2048;
 /// Each sprite's edge pixels are repeated into this border so filtering never bleeds.
@@ -17,7 +16,6 @@ pub struct Assets {
     rects: HashMap<&'static str, Rect>,
     pub font: Font,
     pub font_bold: Font,
-    pub sounds: HashMap<&'static str, Sound>,
     /// Combines the world with the light map and applies colour grading and a vignette.
     pub composite: Material,
     /// Plain textured drawing with additive blending, for lights.
@@ -63,13 +61,6 @@ impl Assets {
         let atlas = Texture2D::from_image(&atlas);
         atlas.set_filter(FilterMode::Linear);
 
-        let mut sounds = HashMap::new();
-        for (name, bytes) in SOUNDS {
-            if let Ok(s) = load_sound_from_bytes(bytes).await {
-                sounds.insert(*name, s);
-            }
-        }
-
         let font = load_ttf_font_from_bytes(include_bytes!("../assets/fonts/MPLUSRounded1c-Medium.ttf"))
             .expect("font");
         let font_bold = load_ttf_font_from_bytes(include_bytes!("../assets/fonts/MPLUSRounded1c-Bold.ttf"))
@@ -103,7 +94,7 @@ impl Assets {
         )
         .expect("additive shader");
 
-        Assets { atlas, rects, font, font_bold, sounds, composite, additive }
+        Assets { atlas, rects, font, font_bold, composite, additive }
     }
 
     pub fn rect(&self, name: &str) -> Rect {
