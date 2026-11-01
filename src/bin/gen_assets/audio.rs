@@ -80,193 +80,199 @@ fn bass(f: f32, len: f32) -> impl Fn(f32) -> f32 {
     }
 }
 
-fn lead(f: f32, len: f32) -> impl Fn(f32) -> f32 {
+/// Slow-swelling pad: a few detuned sines per note, so chords bloom and breathe.
+fn pad(f: f32, len: f32) -> impl Fn(f32) -> f32 {
     move |t| {
-        let vib = 1.0 + 0.004 * (TAU * 5.0 * t).sin() * (t * 2.0).min(1.0);
+        let attack = (t / 0.9).min(1.0);
+        let rel = if t > len { (1.0 - (t - len) / 1.2).max(0.0) } else { 1.0 };
+        let s = (TAU * f * t).sin()
+            + (TAU * f * 1.003 * t).sin() * 0.7
+            + (TAU * f * 0.997 * t).sin() * 0.7
+            + (TAU * f * 2.0 * t).sin() * 0.12;
+        s * attack * attack * rel
+    }
+}
+
+/// Soft breathy lead: sine with delayed vibrato and a slow attack.
+fn flute(f: f32, len: f32) -> impl Fn(f32) -> f32 {
+    move |t| {
+        let vib = 1.0 + 0.006 * (TAU * 5.2 * t).sin() * ((t - 0.15) * 2.5).clamp(0.0, 1.0);
         let ph = TAU * f * vib * t;
-        let env = (1.0 - (-t / 0.02).exp()) * (-t * 1.6).exp() * release(t, len);
-        (ph.sin() + 0.15 * (2.0 * ph).sin() + 0.05 * (3.0 * ph).sin()) * env
+        let env = (t / 0.06).min(1.0) * (-t * 0.7).exp() * release(t, len);
+        (ph.sin() + 0.08 * (2.0 * ph).sin()) * env
     }
 }
 
 pub fn music() -> Vec<f32> {
-    const BPM: f32 = 74.0;
+    const BPM: f32 = 80.0;
     let beat = 60.0 / BPM;
     let bars = 32;
     let len = bars as f32 * 4.0 * beat;
-    let tail = 4.0;
+    let tail = 5.0;
     let total = ((len + tail) * SR) as usize;
     let mut keys = vec![0.0; total];
+    let mut pads = vec![0.0; total];
     let mut low = vec![0.0; total];
     let mut mel = vec![0.0; total];
-    let mut counter = vec![0.0; total];
     let mut drums = vec![0.0; total];
+    let mut kicks_at: Vec<f32> = Vec::new();
     let mut rng = Rng(0x5eed_1234_abcd);
 
-    // (bass root, chord voicing) per bar.
+    // A lazy descending progression in C: Fmaj9 Em9 Dm9 Cmaj9 / Fmaj9 Em9 Dm9 G13.
     let chords: [(f32, [f32; 4]); 8] = [
         (41.0, [57.0, 60.0, 64.0, 67.0]),
-        (40.0, [55.0, 59.0, 62.0, 64.0]),
+        (40.0, [55.0, 59.0, 62.0, 66.0]),
         (38.0, [53.0, 57.0, 60.0, 64.0]),
-        (43.0, [53.0, 57.0, 60.0, 65.0]),
         (36.0, [52.0, 55.0, 59.0, 62.0]),
-        (45.0, [55.0, 59.0, 60.0, 64.0]),
-        (38.0, [53.0, 57.0, 60.0, 62.0]),
-        (40.0, [56.0, 59.0, 62.0, 65.0]),
+        (41.0, [57.0, 60.0, 64.0, 67.0]),
+        (40.0, [55.0, 59.0, 62.0, 66.0]),
+        (38.0, [53.0, 57.0, 60.0, 64.0]),
+        (43.0, [53.0, 59.0, 64.0, 69.0]),
     ];
-    let pentatonic = [72.0, 74.0, 76.0, 79.0, 81.0, 84.0];
-    let high = [84.0, 86.0, 88.0, 91.0, 93.0];
-    let swing = |b: f32| if (b * 2.0).fract().abs() > 0.4 { b + 0.12 } else { b };
-    let hat = |drums: &mut [f32], at: f32, vel: f32, seed: u64| {
-        render(drums, at, 0.08, vel, move |t| {
-            let mut r = Rng(seed ^ ((t * SR) as u64).wrapping_mul(0x9E37_79B9));
-            r.noise() * (-t * 55.0).exp()
-        });
-    };
-    let snare = |drums: &mut [f32], at: f32, vel: f32, seed: u64, tone: f32| {
-        render(drums, at, 0.4, vel, move |t| {
-            let mut r = Rng(seed ^ ((t * SR) as u64 * 2_654_435_761));
-            let n = r.noise();
-            (n * 0.7 * (-t * 16.0).exp()) + (TAU * tone * t).sin() * 0.35 * (-t * 22.0).exp()
-        });
-    };
+    // A written hook: (bar within the 8-bar cycle, beat, midi note, length in beats).
+    let hook: &[(usize, f32, f32, f32)] = &[
+        (0, 0.5, 76.0, 0.5), (0, 1.0, 79.0, 0.5), (0, 1.5, 76.0, 1.0), (0, 3.0, 74.0, 0.5), (0, 3.5, 72.0, 1.5),
+        (1, 2.0, 74.0, 0.5), (1, 2.5, 76.0, 2.0),
+        (2, 0.0, 81.0, 1.0), (2, 1.5, 79.0, 0.5), (2, 2.0, 76.0, 1.0), (2, 3.5, 74.0, 0.5),
+        (3, 0.0, 72.0, 1.0), (3, 1.0, 74.0, 0.5), (3, 1.5, 67.0, 2.5),
+        (4, 0.5, 76.0, 0.5), (4, 1.0, 79.0, 0.5), (4, 1.5, 76.0, 1.0), (4, 3.0, 79.0, 0.5), (4, 3.5, 81.0, 1.5),
+        (5, 2.0, 79.0, 0.5), (5, 2.5, 78.0, 2.0),
+        (6, 0.0, 77.0, 1.0), (6, 1.0, 76.0, 0.5), (6, 1.5, 74.0, 0.5), (6, 2.0, 72.0, 1.5),
+        (7, 0.0, 74.0, 1.0), (7, 1.5, 71.0, 0.5), (7, 2.0, 74.0, 2.0),
+    ];
+    let swing = |b: f32| if (b * 2.0).fract().abs() > 0.4 { b + 0.08 } else { b };
 
     for bar in 0..bars {
         let t0 = bar as f32 * 4.0 * beat;
-        let (root, voicing) = chords[bar % 8];
-        // A (0-8) sparse, B (8-16) full, C (16-24) breakdown then build, D (24-32) full.
-        let breakdown = (16..20).contains(&bar);
-        let build = (20..24).contains(&bar);
-        let full = (8..16).contains(&bar) || bar >= 24;
-        let last = bar == bars - 1;
+        let cyc = bar % 8;
+        let (root, voicing) = chords[cyc];
+        // Intro (0-4) pad + keys, groove (4-12), hook (12-20), breakdown (20-24), full (24-32).
+        let intro = bar < 4;
+        let breakdown = (20..24).contains(&bar);
+        let hook_on = (12..20).contains(&bar) || bar >= 24;
 
-        // Keys: the main voice, still present through the breakdown.
-        let hits: &[(f32, f32, f32)] = if breakdown {
-            &[(0.0, 3.4, 0.95)]
-        } else if build {
-            &[(0.0, 1.8, 0.8), (3.0, 1.0, 0.5)]
-        } else if full {
-            &[(0.0, 1.8, 1.0), (2.5, 1.3, 0.65), (3.5, 1.0, 0.35)]
+        // Pad holds the whole bar and overlaps into the next.
+        for &n in &voicing {
+            render(&mut pads, t0, 4.0 * beat + 1.4, 0.035, pad(midi(n), 4.0 * beat));
+        }
+
+        // Rhodes comping: lazy, slightly rolled chords.
+        let hits: &[(f32, f32, f32)] = if intro || breakdown {
+            &[(0.0, 3.6, 0.8)]
         } else {
-            &[(0.0, 1.8, 1.0), (2.5, 1.3, 0.6)]
+            &[(0.0, 1.4, 0.9), (1.5, 0.9, 0.55), (2.75, 1.1, 0.7)]
         };
         for &(hit, dur, vel) in hits {
+            let jitter = rng.next() * 0.012;
             for (k, &n) in voicing.iter().enumerate() {
-                let start = t0 + swing(hit) * beat + k as f32 * 0.014;
-                render(&mut keys, start, dur * beat + 1.2, 0.11 * vel, epiano(midi(n), dur * beat));
+                let start = t0 + swing(hit) * beat + k as f32 * 0.018 + jitter;
+                render(&mut keys, start, dur * beat + 1.4, 0.085 * vel, epiano(midi(n), dur * beat));
             }
         }
 
-        // Bass. The breakdown holds a long root so the drop-out leaves air.
-        if breakdown {
-            render(&mut low, t0, 3.6 * beat + 0.3, 0.32, bass(midi(root), 3.4 * beat));
-        } else {
-            render(&mut low, t0, 1.6 * beat + 0.3, 0.34, bass(midi(root), 1.5 * beat));
-            if !build {
-                let second = if bar % 2 == 0 { root + 7.0 } else { root + 12.0 };
-                render(&mut low, t0 + swing(2.5) * beat, beat + 0.3, 0.26, bass(midi(second), 0.9 * beat));
-            }
-        }
-
-        // Melody: absent in the breakdown, denser in the full sections.
-        if !breakdown && bar >= 2 {
-            let notes = if full { 3 } else { 2 };
-            for _ in 0..notes {
-                let pos = (rng.next() * 8.0).floor() / 2.0;
-                if rng.next() < 0.8 {
-                    let n = pentatonic[(rng.next() * pentatonic.len() as f32) as usize];
-                    render(&mut mel, t0 + swing(pos) * beat, 1.6, 0.13, lead(midi(n), 0.6));
-                }
-            }
-        }
-        // Countermelody only in the last section, an octave up and very quiet.
-        if bar >= 24 && bar % 4 == 2 {
-            for k in 0..2 {
-                let n = high[(rng.next() * high.len() as f32) as usize];
-                let at = t0 + (1.5 + k as f32 * 1.0) * beat;
-                render(&mut counter, at, 1.4, 0.055, lead(midi(n), 0.5));
-            }
-        }
-
-        // Drums drop out for the breakdown and return half-time in the build.
-        if !breakdown {
-            let kicks: &[f32] = if build {
-                &[0.0]
-            } else if bar % 4 == 3 {
-                &[0.0, 1.75, 2.5]
+        // Round sub bass.
+        if !intro {
+            if breakdown {
+                render(&mut low, t0, 3.8 * beat + 0.3, 0.3, bass(midi(root), 3.6 * beat));
             } else {
-                &[0.0, 2.5]
-            };
-            for &k in kicks {
-                render(&mut drums, t0 + swing(k) * beat, 0.5, 0.75, |t| {
-                    let ph = TAU * (45.0 * t + 70.0 * (1.0 - (-t * 30.0).exp()) / 30.0);
-                    ph.sin() * (-t * 8.0).exp()
-                });
+                render(&mut low, t0, 1.8 * beat + 0.3, 0.34, bass(midi(root), 1.7 * beat));
+                let walk = if cyc % 2 == 0 { root + 7.0 } else { root + 12.0 };
+                render(&mut low, t0 + swing(2.5) * beat, beat + 0.3, 0.24, bass(midi(walk), 0.9 * beat));
+                render(&mut low, t0 + swing(3.5) * beat, 0.5 * beat + 0.3, 0.18, bass(midi(root + 10.0), 0.4 * beat));
             }
-            let snare_beats: &[f32] = if build { &[3.0] } else { &[1.0, 3.0] };
-            for &s in snare_beats {
-                snare(&mut drums, t0 + s * beat + 0.01, 0.32, rng.0, 185.0);
-            }
-            let step = if build { 1.0 } else { 0.5 };
-            let mut e = 0.0;
-            while e < 4.0 {
-                let vel = if e % 1.0 == 0.0 { 0.09 } else { 0.05 };
-                hat(&mut drums, t0 + swing(e) * beat, vel, rng.0 + e as u64);
-                e += step;
-            }
-            // A fill at the end of every eight bars, plus a soft ride on the first beat.
-            if bar % 8 == 7 {
-                for (k, at) in [2.5, 2.75, 3.0, 3.25].into_iter().enumerate() {
-                    snare(&mut drums, t0 + at * beat, 0.22 + k as f32 * 0.04, rng.0 + k as u64, 150.0 + k as f32 * 18.0);
+        }
+
+        // The hook, on a breathy lead; the breakdown hears it an octave down on keys.
+        if hook_on || breakdown {
+            for &(_, at, n, l) in hook.iter().filter(|h| h.0 == cyc) {
+                let start = t0 + swing(at) * beat + rng.next() * 0.01;
+                if breakdown {
+                    render(&mut mel, start, l * beat + 1.5, 0.11, epiano(midi(n - 12.0), l * beat));
+                } else {
+                    render(&mut mel, start, l * beat + 1.0, 0.1, flute(midi(n), l * beat));
                 }
             }
-            if bar % 8 == 0 {
-                let seed = rng.0;
-                render(&mut drums, t0, 1.6, 0.12, move |t| {
-                    let mut r = Rng(seed ^ ((t * SR) as u64 * 0x9E37_79B9));
-                    r.noise() * (-t * 2.2).exp()
+        }
+
+        // Soft boom-bap drums, absent in the intro and breakdown (hats only there).
+        let hats_only = intro || breakdown;
+        if !hats_only {
+            let kicks: &[f32] = if cyc % 4 == 3 { &[0.0, 1.75, 2.5] } else { &[0.0, 2.5] };
+            for &k in kicks {
+                let at = t0 + swing(k) * beat;
+                kicks_at.push(at);
+                render(&mut drums, at, 0.6, 0.7, |t| {
+                    let ph = TAU * (48.0 * t + 60.0 * (1.0 - (-t * 25.0).exp()) / 25.0);
+                    ph.sin() * (-t * 6.0).exp()
                 });
             }
-        } else if last {
-            // The loop still needs a downbeat under the held key.
-            render(&mut low, t0, beat, 0.25, bass(midi(root), beat));
+            // A soft, low snare/rim on 2 and 4.
+            for s in [1.0, 3.0] {
+                let seed = rng.0;
+                render(&mut drums, t0 + s * beat + 0.015, 0.35, 0.22, move |t| {
+                    let mut r = Rng(seed ^ ((t * SR) as u64 * 2_654_435_761));
+                    r.noise() * 0.6 * (-t * 20.0).exp() + (TAU * 170.0 * t).sin() * 0.4 * (-t * 25.0).exp()
+                });
+            }
+        }
+        let hat_gain = if hats_only { 0.035 } else { 0.06 };
+        let mut e = 0.0;
+        while e < 4.0 {
+            let accent = if e % 1.0 == 0.0 { 1.0 } else { 0.6 };
+            let vel = hat_gain * accent * (0.85 + rng.next() * 0.3);
+            let seed = rng.0;
+            render(&mut drums, t0 + swing(e) * beat, 0.06, vel, move |t| {
+                let mut r = Rng(seed ^ ((t * SR) as u64).wrapping_mul(0x9E37_79B9));
+                r.noise() * (-t * 70.0).exp()
+            });
+            e += 0.5;
         }
     }
 
-    // Melody echoes, and a quieter echo on the counter line.
+    // Dreamy dotted-eighth echo on the melody.
     let delay = (0.75 * beat * SR) as usize;
     for i in delay..total {
-        mel[i] += mel[i - delay] * 0.38;
+        mel[i] += mel[i - delay] * 0.42;
     }
-    let far = (1.5 * beat * SR) as usize;
-    for i in far..total {
-        counter[i] += counter[i - far] * 0.3;
+    // A short slapback blur on the keys for space.
+    let slap = (0.11 * SR) as usize;
+    for i in slap..total {
+        keys[i] += keys[i - slap] * 0.25;
     }
 
-    // Mix, then warm it up: lowpass, tape wobble and vinyl.
+    // Sidechain "pump": pad and keys duck under each kick and swell back.
+    let mut duck = vec![1.0f32; total];
+    for &k in &kicks_at {
+        let s0 = (k * SR) as usize;
+        for j in 0..(0.45 * SR) as usize {
+            if let Some(d) = duck.get_mut(s0 + j) {
+                let t = j as f32 / SR;
+                *d = d.min(1.0 - 0.4 * (-t / 0.14).exp());
+            }
+        }
+    }
+
+    // Mix: Rhodes tremolo, tape wobble, a gentle lowpass and a whisper of vinyl.
     let mut out = vec![0.0; total];
     let mut lp = 0.0;
     let mut hiss_lp = 0.0;
     let mut crackle = 0.0f32;
     for i in 0..total {
         let t = i as f32 / SR;
-        // Two slow detune LFOs make the keys and melody drift like worn tape.
-        let wobble = 1.0 + 0.0035 * (TAU * 0.31 * t).sin() + 0.0015 * (TAU * 0.87 * t).sin();
+        let wobble = 1.0 + 0.0025 * (TAU * 0.27 * t).sin() + 0.001 * (TAU * 0.71 * t).sin();
         let ki = ((i as f32) * wobble) as usize;
-        let mi = ((i as f32) * (1.0 + (wobble - 1.0) * 0.6)) as usize;
-        let k = keys.get(ki).copied().unwrap_or(0.0);
-        let m = mel.get(mi).copied().unwrap_or(0.0);
-        let mut s = k + m + low[i] + counter[i] + drums[i];
-        lp += (s - lp) * 0.45;
+        let k = keys.get(ki).copied().unwrap_or(0.0) * (1.0 + 0.18 * (TAU * 4.2 * t).sin());
+        let p = pads.get(ki).copied().unwrap_or(0.0);
+        let mut s = (k + p) * duck[i] + mel[i] + low[i] + drums[i];
+        lp += (s - lp) * 0.6;
         s = lp;
-        // Continuous vinyl hiss with occasional louder crackles and pops.
-        hiss_lp += (rng.noise() - hiss_lp) * 0.2;
-        if rng.next() < 12.0 / SR {
-            crackle = (rng.next() * 0.18 + 0.02) * if rng.next() < 0.5 { 1.0 } else { -1.0 };
+        hiss_lp += (rng.noise() - hiss_lp) * 0.15;
+        if rng.next() < 3.0 / SR {
+            crackle = (rng.next() * 0.025 + 0.005) * if rng.next() < 0.5 { 1.0 } else { -1.0 };
         }
-        s += hiss_lp * 0.008 + crackle;
-        crackle *= 0.55;
-        out[i] = (s * 1.2).tanh();
+        s += hiss_lp * 0.004 + crackle;
+        crackle *= 0.5;
+        out[i] = (s * 1.1).tanh();
     }
 
     // Fold the tail onto the start so the loop is seamless.

@@ -536,7 +536,10 @@ impl Minimap {
 pub fn draw(g: &mut Game) {
     g.ui_rects.clear();
     g.tooltip.clear();
-    let cam = Camera2D::from_display_rect(Rect::new(0.0, 0.0, ui_width(), ui_height()));
+    let mut cam = Camera2D::from_display_rect(Rect::new(0.0, 0.0, ui_width(), ui_height()));
+    // macroquad 0.4 inverts Y again for cameras without a render target, so
+    // `from_display_rect` alone draws the UI upside down. Flip it back to y-down.
+    cam.zoom.y = -cam.zoom.y;
     set_camera(&cam);
 
     hud(g);

@@ -17,7 +17,7 @@ pub struct Assets {
     rects: HashMap<&'static str, Rect>,
     pub font: Font,
     pub sounds: HashMap<&'static str, Sound>,
-    /// Combines the world with the light map and applies colour grading, vignette and grain.
+    /// Combines the world with the light map and applies colour grading and a vignette.
     pub composite: Material,
     /// Plain textured drawing with additive blending, for lights.
     pub additive: Material,
@@ -180,8 +180,8 @@ precision mediump float;
 varying lowp vec2 uv;
 uniform sampler2D Texture;
 uniform sampler2D Light;
-uniform vec4 Params; // time, grain, vignette, warmth
-uniform vec2 Screen; // framebuffer size, so grain is the same physical size at every resolution
+uniform vec4 Params; // unused, unused, vignette, warmth
+uniform vec2 Screen; // framebuffer size (currently unused)
 void main() {
     vec3 c = texture2D(Texture, uv).rgb;
     vec3 l = texture2D(Light, uv).rgb * 2.0;
@@ -195,11 +195,6 @@ void main() {
     col = mix(vec3(luma), col, 0.92);
     vec2 d = uv - 0.5;
     col *= 1.0 - dot(d, d) * Params.z;
-    // Keep the hash input small: big sin() arguments overflow mediump and turn black.
-    // Hash on the physical pixel grid (2 px cells) so grain stays the same size on any screen.
-    vec2 q = floor(uv * Screen / 2.0);
-    float n = fract(sin(dot(mod(q, 97.0) + Params.x, vec2(1.2989, 7.8233))) * 4375.85);
-    col += (n - 0.5) * Params.y;
     gl_FragColor = vec4(col, 1.0);
 }
 "#;

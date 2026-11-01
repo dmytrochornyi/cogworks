@@ -441,7 +441,7 @@ impl Renderer {
 
         set_default_camera();
         a.composite.set_texture("Light", light_rt.texture.clone());
-        a.composite.set_uniform("Params", vec4(t.fract() * 10.0, 0.035, 0.55, 0.35));
+        a.composite.set_uniform("Params", vec4(0.0, 0.0, 0.55, 0.35));
         a.composite.set_uniform("Screen", vec2(w, h));
         gl_use_material(&a.composite);
         // The render targets are stored bottom-up relative to the default
