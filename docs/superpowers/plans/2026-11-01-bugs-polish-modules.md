@@ -222,4 +222,7 @@ Commit: `fix: no silent item or fluid loss; tunnels pair either way; pause freez
   5. The cursor states (point, hand, build, mine) appear in the right places.
   6. Load an old save (`cogworks_save.json` from before this plan, or the demo save). It loads.
 - [ ] **Step 2b (from the Task 7 audit):** the idle frames `player_0`/`player_1` have no feet, while the walk frames do, so the robot seems to grow legs when it starts moving. Give the idle frames the same two feet in a standing pose, and keep the breathing bob.
+- [ ] **Step 2c (from the Task 8 and 9 audit):**
+  - The recipe card's `have / need` reads as "55 / 2", which looks like "55 out of 2". Show the requirement first: `×2` in the row's state colour, then a muted `have 55`.
+  - The cursor nearly disappears on cream panels. Use a darker, thicker outline (about 3 px in `TRIM_SHADOW`/`INK`), a stronger soft shadow, and a 36-logical-px size.
 - [ ] **Step 3:** Report file sizes after the split. No source file over 600 lines, except generated `assets_list.rs` and `sprites.rs` (data-heavy, may stay).
