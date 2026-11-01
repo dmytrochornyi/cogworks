@@ -22,13 +22,15 @@ const BG2: Color = theme::color(theme::BG2);
 const EDGE: Color = theme::color(theme::EDGE);
 pub const TEXT: Color = theme::color(theme::TEXT);
 const TEXT_DIM: Color = theme::color(theme::TEXT_DIM);
+const TITLE: Color = theme::color(theme::TITLE);
+const KEY: Color = theme::color(theme::KEY);
+const SLOT_WELL: Color = theme::color(theme::SLOT_WELL);
 const HONEY: Color = theme::color(theme::HONEY);
-const PEACH: Color = theme::color(theme::PEACH);
-const SAGE: Color = theme::color(theme::SAGE);
+// Rust accent for warnings: darker than the light `PEACH` so it reads on paper.
+const PEACH: Color = theme::color(theme::TERRA_600);
 const TERRA: Color = theme::color(theme::TERRA);
 const TEAL: Color = theme::color(theme::TEAL);
 const SHADE: Color = theme::color(theme::SHADE);
-const INK: Color = theme::color(theme::INK);
 
 // ------------------------------------------------------------------ ui camera
 
@@ -218,13 +220,22 @@ fn font_for(a: &Assets, size: TextSize) -> &Font {
     if size.bold() { &a.font_bold } else { &a.font }
 }
 
+/// Full line metrics (ascent + descent) for a text size, measured from a fixed
+/// reference glyph pair so every segment of one line shares the same baseline.
+fn line_metrics(a: &Assets, size: TextSize) -> TextDimensions {
+    let (font_size, font_scale) = raster_params(size.px(), ui_scale());
+    measure_text("Hg", Some(font_for(a, size)), font_size, font_scale)
+}
+
 /// Draws one line of text. `y` is the top of the line box; the baseline comes
-/// from the font's own metrics so layouts no longer need magic offsets.
+/// from a fixed reference string rather than the string's own tallest glyph, so
+/// segments without ascenders ("zoom", "save", "pause") sit on the same line
+/// as their neighbours instead of floating higher.
 pub fn text(a: &Assets, t: &str, x: f32, y: f32, size: TextSize, col: Color) {
     let (font_size, font_scale) = raster_params(size.px(), ui_scale());
     let font = font_for(a, size);
-    let d = measure_text(t, Some(font), font_size, font_scale);
-    draw_text_ex(t, x.round(), (y + d.offset_y).round(), TextParams {
+    let baseline = line_metrics(a, size).offset_y;
+    draw_text_ex(t, x.round(), (y + baseline).round(), TextParams {
         font: Some(font),
         font_size,
         font_scale,
@@ -238,21 +249,25 @@ pub fn text_w(a: &Assets, t: &str, size: TextSize) -> f32 {
     measure_text(t, Some(font_for(a, size)), font_size, font_scale).width
 }
 
-/// Text centred in `r`, using measured height rather than a baseline guess.
+/// Text centred in `r`, using the string's width and the fixed line height so
+/// vertical centring doesn't shift for strings without ascenders or descenders.
 fn text_in(a: &Assets, t: &str, r: Rect, size: TextSize, col: Color) {
     let (font_size, font_scale) = raster_params(size.px(), ui_scale());
-    let d = measure_text(t, Some(font_for(a, size)), font_size, font_scale);
-    text(a, t, r.x + (r.w - d.width) / 2.0, r.y + (r.h - d.height) / 2.0, size, col);
+    let font = font_for(a, size);
+    let w = measure_text(t, Some(font), font_size, font_scale).width;
+    let h = line_metrics(a, size).height;
+    text(a, t, r.x + (r.w - w) / 2.0, r.y + (r.h - h) / 2.0, size, col);
 }
 
 fn text_right(a: &Assets, t: &str, right: f32, y: f32, size: TextSize, col: Color) {
     text(a, t, right - text_w(a, t, size), y, size, col);
 }
 
-/// Renders a help line with the key/action before each " · " in honey and the
-/// description in the base colour, preserving the original column spacing.
+/// Renders a help line with the key/action before each " · " in the deep-gold
+/// key colour and the description in the base colour, preserving the original
+/// column spacing.
 fn text_keys(a: &Assets, t: &str, x: f32, y: f32, size: TextSize, base: Color) {
-    let key_col = HONEY;
+    let key_col = KEY;
     let mut cx = x;
     let mut rest = t;
     let span = |s: &str, cx: &mut f32, col: Color| {
@@ -282,17 +297,6 @@ fn text_keys(a: &Assets, t: &str, x: f32, y: f32, size: TextSize, base: Color) {
     }
 }
 
-/// Text with a soft ink shadow, for labels drawn over the world.
-fn text_over(a: &Assets, t: &str, x: f32, y: f32, size: TextSize, col: Color) {
-    text(a, t, x + 1.5, y + 2.0, size, theme::alpha(theme::SHADE, 0.55));
-    text(a, t, x, y, size, col);
-}
-
-fn text_over_centered(a: &Assets, t: &str, cx: f32, y: f32, size: TextSize, col: Color) {
-    let x = cx - text_w(a, t, size) / 2.0;
-    text_over(a, t, x, y, size, col);
-}
-
 // ------------------------------------------------------------------ surfaces
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -314,21 +318,23 @@ pub fn surface(r: Rect, elev: Elevation) {
 }
 
 fn surface_alpha(r: Rect, elev: Elevation, alpha: f32) {
-    let (rad, fill, border, shadow) = match elev {
-        Elevation::Panel => (radius::LG, theme::alpha(theme::BG, 0.96), EDGE, true),
-        Elevation::Card => (radius::MD, BG2, theme::alpha(theme::EDGE, 0.7), false),
-        Elevation::Tooltip => (radius::MD, theme::alpha(theme::BG, 0.98), EDGE, true),
-        Elevation::Toast => (radius::MD, theme::alpha(theme::BG, 0.94), EDGE, true),
-        Elevation::Banner => (radius::LG, theme::alpha(theme::BG, 0.92), EDGE, true),
+    let (rad, fill, border, border_w, shadow) = match elev {
+        Elevation::Panel => (radius::LG, theme::alpha(theme::BG, 0.96), EDGE, line::STRONG, true),
+        Elevation::Card => (radius::MD, BG2, theme::alpha(theme::EDGE, 0.7), line::BASE, false),
+        Elevation::Tooltip => (radius::MD, theme::alpha(theme::BG, 0.98), EDGE, line::STRONG, true),
+        Elevation::Toast => (radius::MD, theme::alpha(theme::BG, 0.94), EDGE, line::STRONG, true),
+        Elevation::Banner => (radius::LG, theme::alpha(theme::BG, 0.92), EDGE, line::STRONG, true),
     };
     let mix_a = |c: Color, a: f32| theme::with_alpha(c, c.a * a * alpha);
     if shadow {
-        rrect(Rect::new(r.x + 4.0, r.y + 6.0, r.w, r.h), rad, mix_a(SHADE, 0.35));
-        rrect(Rect::new(r.x + 8.0, r.y + 10.0, r.w, r.h), rad, mix_a(SHADE, 0.22));
+        // Soft drop shadow, kept subtle under the cream surface.
+        rrect(Rect::new(r.x + 4.0, r.y + 6.0, r.w, r.h), rad, mix_a(SHADE, 0.22));
+        rrect(Rect::new(r.x + 8.0, r.y + 10.0, r.w, r.h), rad, mix_a(SHADE, 0.14));
+        // Hard lacquer under-edge, offset straight down so it reads as paper thickness.
+        rrect(Rect::new(r.x, r.y + 3.0, r.w, r.h), rad, mix_a(theme::color(theme::TRIM_SHADOW), 1.0));
     }
     rrect(r, rad, mix_a(fill, 1.0));
-    rrect_lines(Rect::new(r.x + 2.0, r.y + 2.0, r.w - 4.0, r.h - 4.0), rad - 2.0, line::HAIR, mix_a(theme::color(theme::BEVEL), 0.08));
-    rrect_lines(r, rad, line::BASE, mix_a(border, 1.0));
+    rrect_lines(r, rad, border_w, mix_a(border, 1.0));
 }
 
 /// A window with a title, a close button and an Esc hint.
@@ -366,7 +372,7 @@ impl<'a> Panel<'a> {
         let a = g.assets.clone();
         let mut closed = false;
         if let Some(t) = self.title {
-            text(&a, t, self.r.x + space::XL, self.r.y + space::L, TextSize::Xl, HONEY);
+            text(&a, t, self.r.x + space::XL, self.r.y + space::L, TextSize::Xl, TITLE);
         }
         if let Some(s) = self.subtitle {
             let w = self.title.map(|t| text_w(&a, t, TextSize::Xl)).unwrap_or(0.0);
@@ -375,7 +381,7 @@ impl<'a> Panel<'a> {
         if self.closable {
             let cb = Rect::new(self.r.right() - space::L - 28.0, self.r.y + space::M, 28.0, 28.0);
             let hint = text_w(&a, "Esc", TextSize::Xs);
-            text(&a, "Esc", cb.x - hint - space::S, self.r.y + space::L - 2.0, TextSize::Xs, theme::alpha(theme::HONEY, 0.8));
+            text(&a, "Esc", cb.x - hint - space::S, self.r.y + space::L - 2.0, TextSize::Xs, KEY);
             if button_kind(&a, cb, "x", true, ButtonKind::Secondary) {
                 closed = true;
             }
@@ -395,15 +401,12 @@ impl<'a> Panel<'a> {
 // ------------------------------------------------------------------ components
 
 fn bar(r: Rect, frac: f32, col: Color) {
-    rrect(r, r.h / 2.0, theme::alpha(theme::SHADE, 0.9));
+    rrect(r, r.h / 2.0, SLOT_WELL);
     if frac > 0.0 {
         let w = (r.w * frac.clamp(0.0, 1.0)).max(r.h);
         rrect(Rect::new(r.x, r.y, w, r.h), r.h / 2.0, col);
-        if w > r.h + 3.0 {
-            rrect(Rect::new(r.x + 1.5, r.y + 1.5, w - 3.0, r.h / 2.0 - 1.0), r.h / 2.0, theme::alpha(theme::WHITE, 0.16));
-        }
     }
-    rrect_lines(r, r.h / 2.0, line::HAIR, theme::alpha(theme::SHADE, 0.5));
+    rrect_lines(r, r.h / 2.0, line::HAIR, theme::alpha(theme::TEXT, 0.22));
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -415,25 +418,19 @@ pub enum ButtonKind {
 fn button_kind(a: &Assets, r: Rect, label: &str, enabled: bool, kind: ButtonKind) -> bool {
     let hot = enabled && hovered(r);
     let down = hot && is_mouse_button_down(MouseButton::Left);
+    let lacquer = theme::color(theme::LACQUER_500);
+    let lacquer_hot = theme::color(theme::LACQUER_400);
     let (fill, border, text_col) = match (kind, enabled, hot) {
-        (ButtonKind::Primary, true, false) => (HONEY, HONEY, INK),
-        (ButtonKind::Primary, true, true) => (theme::color(theme::HONEY_500), theme::color(theme::LAMP), INK),
-        (ButtonKind::Primary, false, _) => (theme::color(theme::PLUM_850), theme::alpha(theme::EDGE, 0.6), theme::alpha(theme::DIM, 0.5)),
-        (ButtonKind::Secondary, true, false) => (BG2, EDGE, TEXT),
-        (ButtonKind::Secondary, true, true) => (theme::color(theme::PLUM_700), HONEY, TEXT),
-        (ButtonKind::Secondary, false, _) => (theme::alpha(theme::PLUM_950, 0.5), theme::alpha(theme::EDGE, 0.45), theme::alpha(theme::DIM, 0.45)),
+        (ButtonKind::Primary, true, false) => (lacquer, lacquer, BG),
+        (ButtonKind::Primary, true, true) => (lacquer_hot, lacquer_hot, BG),
+        (ButtonKind::Primary, false, _) => (theme::alpha(theme::SLOT_WELL, 0.5), theme::alpha(theme::EDGE, 0.35), theme::alpha(theme::TEXT_DIM, 0.5)),
+        (ButtonKind::Secondary, true, false) => (BG, EDGE, TEXT),
+        (ButtonKind::Secondary, true, true) => (BG2, EDGE, TEXT),
+        (ButtonKind::Secondary, false, _) => (theme::alpha(theme::BG2, 0.5), theme::alpha(theme::EDGE, 0.35), theme::alpha(theme::TEXT_DIM, 0.45)),
     };
     let off = if down { 1.0 } else { 0.0 };
     rrect(Rect::new(r.x, r.y + off, r.w, r.h), radius::MD, fill);
     rrect_lines(Rect::new(r.x, r.y + off, r.w, r.h), radius::MD, line::BASE, border);
-    draw_line(
-        r.x + 6.0,
-        r.y + 1.0 + off,
-        r.right() - 6.0,
-        r.y + 1.0 + off,
-        line::HAIR,
-        theme::alpha(theme::WHITE, if hot { 0.22 } else { 0.08 }),
-    );
     text_in(a, label, Rect::new(r.x, r.y + off, r.w, r.h), TextSize::M, text_col);
     enabled && clicked(r)
 }
@@ -448,38 +445,26 @@ fn primary_button(a: &Assets, r: Rect, label: &str, enabled: bool) -> bool {
 
 fn slot(a: &Assets, r: Rect, item: Option<Item>, count: Option<u32>, selected: bool, unavailable: bool) -> bool {
     let hot = hovered(r);
-    let fill = if selected {
-        theme::color(theme::PLUM_850)
-    } else if hot {
-        theme::color(theme::PLUM_700)
-    } else {
-        BG2
-    };
+    // A warm paper "well" under the icon; hovering lightens it to the panel.
+    let fill = if hot && !selected { BG } else { SLOT_WELL };
     rrect(r, radius::MD, fill);
-    // Hover keeps the normal edge; selection is the only honey-bordered state.
-    let (border, thick) = if selected { (HONEY, line::STRONG) } else { (EDGE, line::BASE) };
-    rrect_lines(r, radius::MD, thick, border);
-    rrect_lines(
-        Rect::new(r.x + 1.5, r.y + 1.5, r.w - 3.0, r.h - 3.0),
-        radius::SM,
-        line::HAIR,
-        theme::alpha(theme::WHITE, if hot { 0.1 } else { 0.06 }),
-    );
+    // Selection is the only lacquer-ringed state; hover keeps the normal edge.
+    let thick = if selected { line::STRONG } else { line::BASE };
+    rrect_lines(r, radius::MD, thick, EDGE);
     if let Some(item) = item {
-        let tint = if unavailable { theme::color(theme::DIM) } else { WHITE };
+        let tint = if unavailable { theme::alpha(theme::WHITE, 0.4) } else { WHITE };
         draw_item_tint(a, r.center(), r.w * 0.7, item, tint);
     }
     if let Some(n) = count {
         let s = n.to_string();
         let x = r.right() - text_w(a, &s, TextSize::S) - 4.0;
         let y = r.bottom() - 22.0;
-        text(a, &s, x + 1.0, y + 1.5, TextSize::S, theme::alpha(theme::SHADE, 0.7));
         text(a, &s, x, y, TextSize::S, if unavailable { TEXT_DIM } else { TEXT });
     }
     if selected {
         // Small corner tick that survives even when the icon is bright.
         let p = vec2(r.right() - 3.0, r.y + 3.0);
-        draw_triangle(p, p + vec2(-7.0, 0.0), p + vec2(0.0, 7.0), HONEY);
+        draw_triangle(p, p + vec2(-7.0, 0.0), p + vec2(0.0, 7.0), KEY);
     }
     clicked(r)
 }
@@ -510,9 +495,9 @@ fn recipe_icon(a: &Assets, r: Rect, recipe: usize, selected: bool, unavailable: 
     if rec.main_output().is_none()
         && let Some((f, _)) = rec.fluid_out
     {
-        let tint = if unavailable { theme::color(theme::DIM) } else { f.color() };
+        let tint = if unavailable { theme::alpha(theme::WHITE, 0.4) } else { f.color() };
         circle(r.center(), r.w * 0.26, tint);
-        circle_lines(r.center(), r.w * 0.26, line::STRONG, INK);
+        circle_lines(r.center(), r.w * 0.26, line::STRONG, TEXT);
     }
 }
 
@@ -617,7 +602,7 @@ fn hud(g: &mut Game) {
             text(&a, tech.name, r.x + 44.0, r.y + 46.0, TextSize::M, TEXT);
             bar(Rect::new(r.x + 44.0, r.y + 66.0, 244.0, 8.0), w.research.progress as f32 / tech.units as f32, TEAL);
         }
-        None => text(&a, "Pick a research · press T", r.x + 44.0, r.y + 51.0, TextSize::M, HONEY),
+        None => text(&a, "Pick a research · press T", r.x + 44.0, r.y + 51.0, TextSize::M, KEY),
     }
     let sky = sky(w.time);
     let threat = if w.peaceful { "Peaceful".to_string() } else { format!("Hives {:.0}%", w.evolution * 100.0) };
@@ -706,7 +691,7 @@ fn minimap(g: &mut Game) {
     if let Some(t) = &g.minimap.tex {
         draw_texture_ex(t, r.x, r.y, WHITE, DrawTextureParams { dest_size: Some(r.size()), ..Default::default() });
     }
-    rrect_lines(r, radius::SM, line::STRONG, BG);
+    rrect_lines(r, radius::SM, line::STRONG, EDGE);
     let scale = MINIMAP / MAP_W as f32;
     let p = g.world.player.pos * scale + r.point();
     circle(p, 4.0, TEXT);
@@ -785,7 +770,7 @@ fn inventory_panel(g: &mut Game) {
 
     let cx = content.x + INV_COLS as f32 * (SLOT + GAP) + space::XL;
     draw_line(cx - space::M, content.y, cx - space::M, r.bottom() - 44.0, line::HAIR, EDGE);
-    text(&a, "Workbench", cx, content.y, TextSize::Xl, HONEY);
+    text(&a, "Workbench", cx, content.y, TextSize::Xl, TITLE);
     text(&a, "Shift-click to craft five", content.right() - 200.0, content.y + 8.0, TextSize::Xs, TEXT_DIM);
     let origin = vec2(cx, content.y + 38.0);
     let recipes: Vec<usize> = (0..RECIPES.len()).filter(|&id| RECIPES[id].hand && g.world.recipe_unlocked(id)).collect();
@@ -889,29 +874,37 @@ fn research_panel(g: &mut Game) {
         let current = g.world.research.current == Some(k);
         let available = g.world.tech_available(k);
         let hot = available && hovered(cr);
-        let bg = if current {
-            theme::color(theme::PLUM_700)
-        } else if done {
-            theme::alpha(theme::SAGE_700, 0.55)
+        let tint = if done {
+            Some(theme::alpha(theme::SAGE_700, 0.22))
+        } else if current {
+            Some(theme::alpha(theme::LACQUER_500, 0.16))
         } else if hot {
-            theme::color(theme::PLUM_700)
+            Some(theme::alpha(theme::WHITE, 0.5))
         } else {
-            BG2
+            None
         };
         surface(cr, Elevation::Card);
-        if current || done || hot {
-            rrect(cr, radius::MD, bg);
+        if let Some(t) = tint {
+            rrect(cr, radius::MD, t);
         }
         rrect_lines(
             cr,
             radius::MD,
             if current { line::STRONG } else { line::BASE },
-            if current { HONEY } else { EDGE },
+            EDGE,
         );
-        let name_col = if done { SAGE } else if current { HONEY } else if available { TEXT } else { TEXT_DIM };
+        let name_col = if done {
+            theme::color(theme::SAGE_700)
+        } else if current {
+            TITLE
+        } else if available {
+            TEXT
+        } else {
+            TEXT_DIM
+        };
         text(&a, tech.name, cr.x + space::L, cr.y + space::M, TextSize::L, name_col);
         if done {
-            text_right(&a, "Done", cr.right() - space::L, cr.y + space::M + 2.0, TextSize::S, SAGE);
+            text_right(&a, "Done", cr.right() - space::L, cr.y + space::M + 2.0, TextSize::S, theme::color(theme::SAGE_700));
         }
         let mut x = cr.x + space::L;
         for &s in tech.science {
@@ -1019,7 +1012,7 @@ fn building_panel(g: &mut Game, id: usize) {
     let left_btn = Rect::new(x, btn_y, half, 36.0);
     let right_btn = Rect::new(x + half + space::S, btn_y, half, 36.0);
 
-    bar(Rect::new(x, y - 4.0, 90.0, 8.0), e.hp / e.kind.max_hp(), SAGE);
+    bar(Rect::new(x, y - 4.0, 90.0, 8.0), e.hp / e.kind.max_hp(), theme::color(theme::SAGE_500));
     if e.kind.draw_kw() > 0.0 {
         let (p, col) = match e.net.and_then(|n| g.world.power.nets.get(n)) {
             None => ("No power · put a pole nearby".to_string(), PEACH),
@@ -1090,7 +1083,7 @@ fn building_panel(g: &mut Game, id: usize) {
                 None => {
                     let lead = "Nothing to study · press ";
                     text(&a, lead, x, y, TextSize::M, PEACH);
-                    text(&a, "T", x + text_w(&a, lead, TextSize::M), y, TextSize::M, HONEY);
+                    text(&a, "T", x + text_w(&a, lead, TextSize::M), y, TextSize::M, KEY);
                 }
             }
             y += 24.0;
@@ -1198,12 +1191,14 @@ fn radio(g: &Game, a: &Assets) {
     // radio above it instead of letting the two panels overlap.
     let overlap = x + w > qx && x < qx + total;
     let y = if overlap { ui_height() - QUICK_SLOT - space::L - 26.0 } else { ui_height() - 30.0 };
+    // A small paper pill keeps the label readable over the grass.
+    surface(Rect::new(x - 36.0, y - 20.0, w + 50.0, 44.0), Elevation::Toast);
     let bob = if g.music_on { (g.time * 2.4).sin() * 2.0 } else { 0.0 };
     let tint = if g.music_on { WHITE } else { theme::alpha(theme::WHITE, 0.4) };
     a.draw_centered("icon_note", vec2(x - 14.0, y - 5.0 + bob), Vec2::splat(20.0), 0.0, tint);
     text(a, prefix, x, y, TextSize::S, TEXT_DIM);
     let mx = x + text_w(a, prefix, TextSize::S);
-    text(a, "M", mx, y, TextSize::S, HONEY);
+    text(a, "M", mx, y, TextSize::S, KEY);
     text(a, suffix, mx + text_w(a, "M", TextSize::S), y, TextSize::S, TEXT_DIM);
 }
 
@@ -1220,15 +1215,15 @@ fn toasts(g: &Game, a: &Assets) {
         rrect(
             Rect::new(r.x, r.y + 9.0, 4.0, r.h - 18.0),
             2.0,
-            theme::alpha(theme::HONEY, alpha),
+            theme::alpha(theme::EDGE, alpha),
         );
-        text(a, msg, x, y + 4.0, TextSize::L, theme::alpha(theme::CREAM, alpha));
+        text(a, msg, x, y + 4.0, TextSize::L, theme::alpha(theme::TEXT, alpha));
     }
 }
 
 fn help(a: &Assets) {
     let lines = [
-        ("Welcome to Cogworks", TextSize::Xl, HONEY),
+        ("Welcome to Cogworks", TextSize::Xl, TITLE),
         ("", TextSize::M, TEXT),
         ("WASD · walk          Wheel · zoom          E · backpack & workbench          T · research", TextSize::M, TEXT),
         ("1–0 · quickbar      R · rotate      Q · copy building or empty hands      Esc · close", TextSize::M, TEXT),
@@ -1259,14 +1254,14 @@ fn overlays(g: &Game, a: &Assets) {
         let x = (ui_width() - w) / 2.0;
         let r = Rect::new(x - 28.0, y, w + 56.0, 54.0);
         surface(r, Elevation::Banner);
-        text_over_centered(a, msg, ui_width() / 2.0, y + 12.0, TextSize::Xxl, col);
+        text(a, msg, x, y + 12.0, TextSize::Xxl, col);
     };
     if !g.world.player.alive() {
         let msg = format!("Cog took a tumble · back in {:.0}…", g.world.player.respawn.ceil());
         banner(&msg, PEACH, ui_height() / 2.0 - 40.0);
     }
     if g.world.won {
-        banner("The Grand Engine hums awake · you did it", HONEY, 92.0);
+        banner("The Grand Engine hums awake · you did it", TITLE, 92.0);
     }
     if g.paused {
         banner("Paused", TEXT, ui_height() / 2.0 - 110.0);
@@ -1285,7 +1280,7 @@ fn draw_tooltip(a: &Assets, lines: &[String]) {
     let r = Rect::new(x, y, width + 28.0, h);
     surface(r, Elevation::Tooltip);
     for (k, l) in lines.iter().enumerate() {
-        let col = if k == 0 { HONEY } else { TEXT };
+        let col = if k == 0 { TITLE } else { TEXT };
         text(a, l, x + 14.0, y + 8.0 + k as f32 * LINE, TextSize::M, col);
     }
 }

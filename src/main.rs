@@ -477,7 +477,7 @@ impl Game {
             let steps = (p * 24.0) as i32;
             for k in 0..steps {
                 let a = -std::f32::consts::FRAC_PI_2 + k as f32 / 24.0 * std::f32::consts::TAU;
-                draw_circle(mx + 20.0 + a.cos() * 8.0, my + 20.0 + a.sin() * 8.0, 2.2, theme::color(theme::HONEY));
+                draw_circle(mx + 20.0 + a.cos() * 8.0, my + 20.0 + a.sin() * 8.0, 2.2, theme::color(theme::KEY));
             }
         }
     }

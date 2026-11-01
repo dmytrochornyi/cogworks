@@ -266,6 +266,9 @@ pub const BEVEL: u32 = 0xffd9a8;
 pub const TEXT: u32 = INKBROWN_900;
 pub const TEXT_DIM: u32 = INKBROWN_500;
 pub const TITLE: u32 = LACQUER_600;
+/// Deep gold/amber for key hints and accent text that sits on paper. `HONEY`
+/// is too pale to read on cream; this keeps the gold accent while passing WCAG.
+pub const KEY: u32 = 0x8a5a1e;
 pub const TRIM_SHADOW: u32 = LACQUER_700;
 pub const SLOT_WELL: u32 = PAPER_300;
 
@@ -451,6 +454,7 @@ mod tests {
         assert!(contrast(TEXT_DIM, BG) >= 4.5, "TEXT_DIM on BG = {:.2}", contrast(TEXT_DIM, BG));
         assert!(contrast(TITLE, BG) >= 4.5, "TITLE on BG = {:.2}", contrast(TITLE, BG));
         assert!(contrast(TEXT, BG2) >= 4.5, "TEXT on BG2 = {:.2}", contrast(TEXT, BG2));
+        assert!(contrast(KEY, BG) >= 4.5, "KEY on BG = {:.2}", contrast(KEY, BG));
     }
 
     /// Every item icon must stand out against the slot well, and the slot
