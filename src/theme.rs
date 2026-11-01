@@ -366,6 +366,26 @@ pub const COPPER: u32 = 0xb8744c;
 pub const DRILL_HOLE: u32 = 0x4a3a30;
 pub const PIT: u32 = 0x2c2226;
 pub const FIREBOX: u32 = 0x2a1a1a;
+
+// Distinct per-machine materials (Task 7 rework): rose is an accent, so each
+// machine leads with its own material and the roofs stay small and curved.
+/// Warm terracotta brick for the smelter furnace body.
+pub const BRICK: u32 = 0xb36a4e;
+pub const BRICK_LIGHT: u32 = 0xcc8160;
+pub const BRICK_DARK: u32 = 0x83452f;
+pub const BRICK_MORTAR: u32 = 0xd9c8ac;
+/// Warm dressed stone for drill pads, wellhead bases and the engine platform.
+pub const STONE: u32 = 0xb6a68a;
+pub const STONE_DARK: u32 = 0x8a7c63;
+/// Brighter and darker copper shades for the lab dome and mixer vat.
+pub const COPPER_LIGHT: u32 = 0xd99163;
+pub const COPPER_DARK: u32 = 0x8a5233;
+/// Warm amber liquid and gleam inside the mixer's copper vat.
+pub const VAT_LIQUID: u32 = 0x8f5a30;
+pub const VAT_HI: u32 = 0xcaa05e;
+/// Verdigris greenhouse glass for the lab dome.
+pub const DOME_GLASS: u32 = 0xc2e4dc;
+pub const DOME_GLASS_D: u32 = 0x7fb0a4;
 pub const VENT_HI: u32 = 0x34484a;
 pub const VENT_LO: u32 = 0x223234;
 pub const GLASS_HI: u32 = 0xcfe4e2;
