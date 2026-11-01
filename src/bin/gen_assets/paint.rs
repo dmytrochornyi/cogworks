@@ -69,15 +69,20 @@ pub const PEBBLE_LIGHT: C = hex(theme::PEBBLE_LIGHT);
 pub const PEBBLE_DARK: C = hex(theme::PEBBLE_DARK);
 pub const ORE_IRON: C = hex(theme::ORE_IRON);
 pub const ORE_IRON_FACET: C = hex(theme::ORE_IRON_FACET);
+pub const ORE_IRON_GLINT: C = hex(theme::ORE_IRON_GLINT);
 pub const ORE_COPPER: C = hex(theme::ORE_COPPER);
 pub const ORE_COPPER_FACET: C = hex(theme::ORE_COPPER_FACET);
+pub const ORE_COPPER_PATINA: C = hex(theme::ORE_COPPER_PATINA);
 pub const ORE_COAL: C = hex(theme::ORE_COAL);
 pub const ORE_COAL_FACET: C = hex(theme::ORE_COAL_FACET);
+pub const ORE_COAL_SHEEN: C = hex(theme::ORE_COAL_SHEEN);
 pub const ORE_STONE: C = hex(theme::ORE_STONE);
 pub const ORE_STONE_FACET: C = hex(theme::ORE_STONE_FACET);
-pub const QUARTZ: C = hex(theme::QUARTZ);
 pub const QUARTZ_LIGHT: C = hex(theme::QUARTZ_LIGHT);
 pub const QUARTZ_SHADE: C = hex(theme::QUARTZ_SHADE);
+pub const FLOWER_PINK: C = hex(theme::FLOWER_PINK);
+pub const FLOWER_BUTTER: C = hex(theme::FLOWER_BUTTER);
+pub const FLOWER_LILAC: C = hex(theme::FLOWER_LILAC);
 pub const TAR_LIGHT: C = hex(theme::TAR_LIGHT);
 pub const TAR_DARK: C = hex(theme::TAR_DARK);
 pub const TAR_SHEEN: C = hex(theme::TAR_SHEEN);
@@ -238,6 +243,24 @@ impl Canvas {
                 }
             }
         }
+    }
+
+    /// Raw pixel colour at (x, y), straight RGBA in 0..=1. Used by the
+    /// gen_assets tests to inspect seams between tiles.
+    #[cfg(test)]
+    pub fn pixel(&self, x: usize, y: usize) -> C {
+        self.px[y * self.w + x]
+    }
+
+    /// Copies the `w`x`h` region starting at (x, y) into a new canvas.
+    pub fn crop(&self, x: usize, y: usize, w: usize, h: usize) -> Canvas {
+        let mut out = Canvas::new(w, h);
+        for yy in 0..h {
+            for xx in 0..w {
+                out.px[yy * w + xx] = self.px[(y + yy) * self.w + (x + xx)];
+            }
+        }
+        out
     }
 
     pub fn save(&self, path: &str) {

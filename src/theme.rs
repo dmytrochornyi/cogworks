@@ -312,17 +312,25 @@ pub const STEM_LIGHT: u32 = 0x9fb07f;
 pub const PEBBLE_LIGHT: u32 = 0xd3c4ab;
 pub const PEBBLE_DARK: u32 = 0xa6977f;
 
-pub const ORE_IRON: u32 = 0x8a8178;
-pub const ORE_IRON_FACET: u32 = 0xa89a8a;
-pub const ORE_COPPER: u32 = 0x9a6a50;
-pub const ORE_COPPER_FACET: u32 = 0xec9560;
-pub const ORE_COAL: u32 = 0x3c3537;
-pub const ORE_COAL_FACET: u32 = 0x6e6468;
-pub const ORE_STONE: u32 = 0xc7b597;
-pub const ORE_STONE_FACET: u32 = 0xeee0c4;
+pub const ORE_IRON: u32 = 0x6e7886;
+pub const ORE_IRON_FACET: u32 = 0x9aa6b8;
+pub const ORE_IRON_GLINT: u32 = 0xdfe7f0;
+pub const ORE_COPPER: u32 = 0xc0713f;
+pub const ORE_COPPER_FACET: u32 = 0xefa05e;
+pub const ORE_COPPER_PATINA: u32 = 0x6fa89a;
+pub const ORE_COAL: u32 = 0x2c2930;
+pub const ORE_COAL_FACET: u32 = 0x4a4550;
+pub const ORE_COAL_SHEEN: u32 = 0x8a76a8;
+pub const ORE_STONE: u32 = 0xd8c8a8;
+pub const ORE_STONE_FACET: u32 = 0xf0e4cc;
 pub const QUARTZ: u32 = 0xd8d2e2;
 pub const QUARTZ_LIGHT: u32 = 0xf3effa;
 pub const QUARTZ_SHADE: u32 = 0xb9aed0;
+
+// Pastel decor flowers: pink, butter-yellow and lilac, sitting on the meadow.
+pub const FLOWER_PINK: u32 = 0xe8a7b8;
+pub const FLOWER_BUTTER: u32 = 0xf2d06b;
+pub const FLOWER_LILAC: u32 = 0xc4b3e0;
 
 pub const TAR_LIGHT: u32 = 0x3a2b36;
 pub const TAR_DARK: u32 = 0x1e161c;
@@ -331,10 +339,10 @@ pub const TAR_BUBBLE: u32 = 0x8a7090;
 
 // ---------------------------------------------------------------- logistics
 
-pub const BELT_BAND: u32 = 0x423a3a;
-pub const BELT_RIDGE: u32 = 0x5b5150;
-pub const BELT_RAIL_HI: u32 = HONEY_600;
-pub const BELT_RAIL_LO: u32 = HONEY_700;
+pub const BELT_BAND: u32 = 0x4b3328;
+pub const BELT_RIDGE: u32 = 0x62442f;
+pub const BELT_RAIL_HI: u32 = 0xd6b45f;
+pub const BELT_RAIL_LO: u32 = 0x94702f;
 pub const TUNNEL_STONE: u32 = 0xb7a58a;
 pub const TUNNEL_MOUTH: u32 = 0x1f171b;
 pub const WOOD: u32 = 0xb07d55;

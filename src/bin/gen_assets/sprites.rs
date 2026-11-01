@@ -94,24 +94,28 @@ fn ground_shadow(cv: &mut Canvas, c: Vec2, r: Vec2, a: f32) {
 
 // ---------------------------------------------------------------- terrain
 
-pub fn grass(seed: u32) -> Canvas {
-    let mut cv = Canvas::new(64, 64);
+/// One 256x256 meadow sheet whose noise and blades are periodic with period
+/// 256. `draw_ground` slices it into sixteen `grass_{i}_{j}` tiles; because the
+/// sheet wraps, neighbouring tiles always continue each other (no visible grid).
+pub fn ground_sheet() -> Canvas {
+    let mut cv = Canvas::new(256, 256);
     let a = GRASS_A;
     let b = GRASS_B;
     let warm = GRASS_WARM;
+    // Soft pastel meadow greens with gentle large-scale variation (period 256).
     cv.fill(|_| -1.0, move |p| {
-        let n = fbm(p, 64.0, 100 + seed);
-        let m = fbm(p + v(17.0, 5.0), 64.0, 200 + seed);
+        let n = fbm(p, 256.0, 100);
+        let m = fbm(p + v(61.0, 29.0), 256.0, 200);
         mix(mix(b, a, n), warm, (m - 0.55).max(0.0) * 1.6)
     });
-    // Little blades, wrapped so the tile repeats seamlessly.
-    for i in 0..18 {
-        let base = v(rand(i, seed) * 64.0, rand(i + 50, seed) * 64.0);
-        let lean = (rand(i + 99, seed) - 0.5) * 4.0;
-        let len = 3.0 + rand(i + 7, seed) * 4.0;
+    // Little blades, wrapped across the whole sheet so they tile seamlessly.
+    for i in 0..288u32 {
+        let base = v(rand(i, 7) * 256.0, rand(i + 50, 7) * 256.0);
+        let lean = (rand(i + 99, 7) - 0.5) * 4.0;
+        let len = 3.0 + rand(i + 7, 7) * 4.0;
         let col = if i % 3 == 0 { BLADE_LIGHT } else { BLADE_DARK };
-        for ox in [-64.0, 0.0, 64.0] {
-            for oy in [-64.0, 0.0, 64.0] {
+        for ox in [-256.0, 0.0, 256.0] {
+            for oy in [-256.0, 0.0, 256.0] {
                 let b0 = base + v(ox, oy);
                 let tip = b0 + v(lean, -len);
                 cv.fill(move |p| capsule(p, b0, tip, 0.8), move |_| with_alpha(col, 0.7));
@@ -134,12 +138,12 @@ pub fn decor(kind: u32) -> Canvas {
         cv.solid(move |p| circle(p, c, r * 0.6), center, 1.0);
     };
     match kind {
-        0 => flower(&mut cv, CREAM, MUSTARD, 5, 4.0),
-        1 => flower(&mut cv, PEACH, HONEY, 5, 3.6),
+        0 => flower(&mut cv, FLOWER_PINK, FLOWER_BUTTER, 5, 4.0),
+        1 => flower(&mut cv, FLOWER_BUTTER, HONEY, 5, 3.6),
         2 => {
             for (k, d) in [v(-5.0, 2.0), v(4.0, -3.0), v(3.0, 6.0)].into_iter().enumerate() {
                 let pc = c + d;
-                let col = if k == 1 { CREAM } else { ROSE };
+                let col = if k == 1 { FLOWER_BUTTER } else { FLOWER_LILAC };
                 cv.solid(move |p| circle(p, pc, 2.8), col, 1.0);
                 cv.fill(move |p| circle(p, pc, 1.0), |_| HONEY);
             }
@@ -197,43 +201,127 @@ fn rock(cv: &mut Canvas, c: Vec2, r: Vec2, body: C, facet: C, ow: f32) {
     cv.fill(move |p| circle(p, f - fr * 0.3, fr.min_element() * 0.35), |_| with_alpha(WHITE, 0.45));
 }
 
-pub fn ore(name: &str, variant: u32) -> Canvas {
-    let mut cv = Canvas::new(64, 64);
-    let seed = variant * 31 + name.len() as u32;
-    let spots: Vec<(Vec2, Vec2)> = (0..4)
+/// A single angular, faceted rock chunk: a convex polygon shaded from a lit
+/// top to a dark base, with one lighter planar face across its two top vertices.
+fn angular_chunk(cv: &mut Canvas, pts: &[Vec2], body: C, facet: C) {
+    let (mut miny, mut maxy) = (f32::MAX, f32::MIN);
+    for p in pts {
+        miny = miny.min(p.y);
+        maxy = maxy.max(p.y);
+    }
+    let span = (maxy - miny).max(1.0);
+    let sdf = move |p: Vec2| poly(p, pts);
+    cv.shadow(sdf, v(2.5, 3.0), 3.0, 0.35);
+    cv.shape(sdf, move |p| mix(lit(body, 1.12), lit(body, 0.66), ((p.y - miny) / span).clamp(0.0, 1.0)), OW);
+    let a = pts[0];
+    let b = pts[1];
+    let c = (a + b) * 0.5 + v(0.0, 2.0);
+    cv.fill(move |p| poly(p, &[a, b, c]), |_| with_alpha(facet, 0.6));
+}
+
+/// Blue-grey angular chunks with a silver glint on each top facet.
+fn iron_ore(cv: &mut Canvas, seed: u32) {
+    let mut glints: Vec<Vec2> = Vec::new();
+    for k in 0..3u32 {
+        let c = v(16.0 + rand(k, seed) * 32.0, 16.0 + rand(k + 9, seed) * 32.0);
+        let n = 5 + (rand(k + 20, seed) * 2.999) as u32;
+        let r = 7.0 + rand(k + 30, seed) * 5.0;
+        let pts: Vec<Vec2> = (0..n)
+            .map(|m| {
+                let a = m as f32 / n as f32 * TAU + rand(k * 7 + m + 1, seed) * 0.6;
+                let rr = r * (0.68 + 0.55 * rand(k * 13 + m + 3, seed));
+                c + Vec2::from_angle(a) * rr
+            })
+            .collect();
+        let top = pts.iter().fold(pts[0], |acc, p| if p.y < acc.y { *p } else { acc });
+        angular_chunk(cv, &pts, ORE_IRON, ORE_IRON_FACET);
+        glints.push(top);
+    }
+    for (k, g) in glints.iter().take(2).enumerate() {
+        let off = v(rand(k as u32 * 3, seed) * 2.0 - 1.0, -rand(k as u32 * 5 + 1, seed) * 1.5);
+        cv.fill(move |p| circle(p, *g + off, 1.2), |_| with_alpha(ORE_IRON_GLINT, 0.95));
+    }
+}
+
+/// Warm orange rounded nuggets with teal patina spots.
+fn copper_ore(cv: &mut Canvas, seed: u32) {
+    let spots: Vec<(Vec2, Vec2)> = (0..4u32)
+        .map(|i| {
+            let c = v(14.0 + rand(i, seed) * 36.0, 14.0 + rand(i + 9, seed) * 36.0);
+            let s = 6.0 + rand(i + 20, seed) * 5.0;
+            (c, v(s * 1.15, s))
+        })
+        .collect();
+    for (c, r) in &spots {
+        rock(cv, *c, *r, ORE_COPPER, ORE_COPPER_FACET, OW);
+    }
+    for (i, (c, r)) in spots.iter().enumerate() {
+        let pc = *c + v((rand(i as u32 + 40, seed) - 0.5) * r.x * 0.9, (rand(i as u32 + 50, seed) - 0.5) * r.y * 0.6);
+        cv.fill(move |p| circle(p, pc, 1.4 + rand(i as u32 + 60, seed) * 1.0), |_| with_alpha(ORE_COPPER_PATINA, 0.75));
+    }
+}
+
+/// Glossy black lumps with a faint purple sheen highlight.
+fn coal_ore(cv: &mut Canvas, seed: u32) {
+    for k in 0..3u32 {
+        let c = v(16.0 + rand(k, seed) * 32.0, 18.0 + rand(k + 9, seed) * 28.0);
+        let r = 7.0 + rand(k + 20, seed) * 4.0;
+        let a = c + v(-r * 0.5, 0.0);
+        let b = c + v(r * 0.5, -r * 0.15);
+        let d = c + v(0.0, r * 0.5);
+        let lump = move |p: Vec2| circle(p, a, r * 0.7).min(circle(p, b, r * 0.65)).min(circle(p, d, r * 0.6));
+        cv.shadow(lump, v(2.0, 3.0), 3.0, 0.35);
+        cv.shape(lump, move |p| mix(lit(ORE_COAL, 1.25), ORE_COAL, ((p.y - (c.y - r)) / (2.0 * r)).clamp(0.0, 1.0)), OW);
+        let s0 = c + v(-r * 0.4, -r * 0.45);
+        let s1 = c + v(r * 0.3, -r * 0.2);
+        cv.fill(move |p| capsule(p, s0, s1, 1.6), |_| with_alpha(ORE_COAL_SHEEN, 0.55));
+    }
+}
+
+/// Pale sandy smooth rounded boulders.
+fn stone_ore(cv: &mut Canvas, seed: u32) {
+    for k in 0..3u32 {
+        let c = v(16.0 + rand(k, seed) * 32.0, 18.0 + rand(k + 9, seed) * 28.0);
+        let r = 9.0 + rand(k + 20, seed) * 4.0;
+        rock(cv, c, v(r, r * 0.9), ORE_STONE, ORE_STONE_FACET, OW);
+    }
+}
+
+/// Lilac crystal spikes, refined with a thin bright ridge on the centre shard.
+fn quartz_ore(cv: &mut Canvas, seed: u32) {
+    let spots: Vec<(Vec2, Vec2)> = (0..4u32)
         .map(|i| {
             let c = v(14.0 + rand(i, seed) * 36.0, 14.0 + rand(i + 9, seed) * 36.0);
             let s = 6.0 + rand(i + 20, seed) * 6.0;
             (c, v(s * 1.2, s))
         })
         .collect();
-    let (body, facet) = match name {
-        "iron" => (ORE_IRON, ORE_IRON_FACET),
-        "copper" => (ORE_COPPER, ORE_COPPER_FACET),
-        "coal" => (ORE_COAL, ORE_COAL_FACET),
-        "stone" => (ORE_STONE, ORE_STONE_FACET),
-        _ => (QUARTZ, WHITE),
-    };
-    if name == "quartz" {
-        for (c, r) in spots {
-            for k in 0..3 {
-                let a = -PI / 2.0 + (k as f32 - 1.0) * 0.45;
-                let len = r.y * (1.6 - 0.25 * (k as f32 - 1.0).abs());
-                let dir = Vec2::from_angle(a);
-                let side = v(-dir.y, dir.x) * r.x * 0.32;
-                let base = c + v(0.0, r.y * 0.5);
-                let pts = [base - side, base - side + dir * len * 0.8, base + dir * len, base + side + dir * len * 0.8, base + side];
-                cv.shadow(move |p| poly(p, &pts), v(2.0, 3.0), 2.0, 0.3);
-                cv.shape(move |p| poly(p, &pts), move |p| mix(QUARTZ_LIGHT, QUARTZ_SHADE, (p.x - base.x + 6.0) / 12.0), 1.8);
+    for (c, r) in spots {
+        for k in 0..3 {
+            let a = -PI / 2.0 + (k as f32 - 1.0) * 0.45;
+            let len = r.y * (1.6 - 0.25 * (k as f32 - 1.0).abs());
+            let dir = Vec2::from_angle(a);
+            let side = v(-dir.y, dir.x) * r.x * 0.3;
+            let base = c + v(0.0, r.y * 0.5);
+            let pts = [base - side, base - side + dir * len * 0.8, base + dir * len, base + side + dir * len * 0.8, base + side];
+            cv.shadow(move |p| poly(p, &pts), v(2.0, 3.0), 2.0, 0.3);
+            cv.shape(move |p| poly(p, &pts), move |p| mix(QUARTZ_LIGHT, QUARTZ_SHADE, (p.x - base.x + 6.0) / 12.0), 1.8);
+            if k == 1 {
+                cv.fill(move |p| capsule(p, base + dir * len * 0.2, base + dir * len * 0.9, 1.0), |_| with_alpha(QUARTZ_LIGHT, 0.7));
             }
         }
-    } else {
-        for (c, r) in spots {
-            rock(&mut cv, c, r, body, facet, OW);
-        }
-        if name == "copper" {
-            cv.fill(|p| circle(p, v(40.0, 44.0), 2.0), |_| with_alpha(TEAL, 0.8));
-        }
+    }
+}
+
+pub fn ore(name: &str, variant: u32) -> Canvas {
+    let mut cv = Canvas::new(64, 64);
+    let seed = variant * 31 + name.len() as u32;
+    match name {
+        "iron" => iron_ore(&mut cv, seed),
+        "copper" => copper_ore(&mut cv, seed),
+        "coal" => coal_ore(&mut cv, seed),
+        "stone" => stone_ore(&mut cv, seed),
+        _ => quartz_ore(&mut cv, seed),
     }
     cv
 }
@@ -1001,4 +1089,40 @@ pub fn icon(name: &str) -> Canvas {
         }
     }
     cv
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ground_sheet;
+    use crate::paint::C;
+
+    /// Mean absolute RGB difference between two same-length pixel strips.
+    fn mean_diff(a: &[C], b: &[C]) -> f32 {
+        assert_eq!(a.len(), b.len());
+        let mut acc = 0.0;
+        for (x, y) in a.iter().zip(b.iter()) {
+            acc += (x[0] - y[0]).abs() + (x[1] - y[1]).abs() + (x[2] - y[2]).abs();
+        }
+        acc / (a.len() as f32 * 3.0)
+    }
+
+    /// The 16 ground tiles cut from the 256 sheet must continue into each other
+    /// on every edge, including the wrap from the last column/row back to the
+    /// first. This is what removes the visible tile grid.
+    #[test]
+    fn ground_tiles_are_seamless() {
+        let sheet = ground_sheet();
+        assert_eq!((sheet.w, sheet.h), (256, 256), "sheet must be 256x256");
+        for j in 0..4usize {
+            for i in 0..4usize {
+                let right: Vec<C> = (0..64).map(|k| sheet.pixel(i * 64 + 63, j * 64 + k)).collect();
+                let left: Vec<C> = (0..64).map(|k| sheet.pixel(((i + 1) % 4) * 64, j * 64 + k)).collect();
+                assert!(mean_diff(&right, &left) < 0.04, "horizontal seam at tile ({i},{j}) = {:.3}", mean_diff(&right, &left));
+
+                let bottom: Vec<C> = (0..64).map(|k| sheet.pixel(i * 64 + k, j * 64 + 63)).collect();
+                let top: Vec<C> = (0..64).map(|k| sheet.pixel(i * 64 + k, ((j + 1) % 4) * 64)).collect();
+                assert!(mean_diff(&bottom, &top) < 0.04, "vertical seam at tile ({i},{j}) = {:.3}", mean_diff(&bottom, &top));
+            }
+        }
+    }
 }

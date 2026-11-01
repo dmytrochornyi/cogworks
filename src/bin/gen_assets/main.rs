@@ -29,8 +29,11 @@ fn main() {
     let mut sheet: Vec<(String, Canvas)> = Vec::new();
     let mut add = |name: &str, cv: Canvas| sheet.push((name.to_string(), cv));
 
-    for v in 0..4 {
-        add(&format!("grass_{v}"), sprites::grass(v));
+    let ground = sprites::ground_sheet();
+    for j in 0..4 {
+        for i in 0..4 {
+            add(&format!("grass_{i}_{j}"), ground.crop(i * 64, j * 64, 64, 64));
+        }
     }
     for v in 0..8 {
         add(&format!("decor_{v}"), sprites::decor(v));
