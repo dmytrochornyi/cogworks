@@ -20,8 +20,8 @@ const HEADER: f32 = 54.0;
 const BG: Color = theme::color(theme::BG);
 const BG2: Color = theme::color(theme::BG2);
 const EDGE: Color = theme::color(theme::EDGE);
-pub const CREAM: Color = theme::color(theme::CREAM);
-const DIM: Color = theme::color(theme::DIM);
+pub const TEXT: Color = theme::color(theme::TEXT);
+const TEXT_DIM: Color = theme::color(theme::TEXT_DIM);
 const HONEY: Color = theme::color(theme::HONEY);
 const PEACH: Color = theme::color(theme::PEACH);
 const SAGE: Color = theme::color(theme::SAGE);
@@ -350,7 +350,7 @@ impl<'a> Panel<'a> {
         }
         if let Some(s) = self.subtitle {
             let w = self.title.map(|t| text_w(&a, t, TextSize::Xl)).unwrap_or(0.0);
-            text(&a, s, self.r.x + space::XL + w + space::L, self.r.y + space::L + 8.0, TextSize::S, DIM);
+            text(&a, s, self.r.x + space::XL + w + space::L, self.r.y + space::L + 8.0, TextSize::S, TEXT_DIM);
         }
         if self.closable {
             let cb = Rect::new(self.r.right() - space::L - 28.0, self.r.y + space::M, 28.0, 28.0);
@@ -399,8 +399,8 @@ fn button_kind(a: &Assets, r: Rect, label: &str, enabled: bool, kind: ButtonKind
         (ButtonKind::Primary, true, false) => (HONEY, HONEY, INK),
         (ButtonKind::Primary, true, true) => (theme::color(theme::HONEY_500), theme::color(theme::LAMP), INK),
         (ButtonKind::Primary, false, _) => (theme::color(theme::PLUM_850), theme::alpha(theme::EDGE, 0.6), theme::alpha(theme::DIM, 0.5)),
-        (ButtonKind::Secondary, true, false) => (BG2, EDGE, CREAM),
-        (ButtonKind::Secondary, true, true) => (theme::color(theme::PLUM_700), HONEY, CREAM),
+        (ButtonKind::Secondary, true, false) => (BG2, EDGE, TEXT),
+        (ButtonKind::Secondary, true, true) => (theme::color(theme::PLUM_700), HONEY, TEXT),
         (ButtonKind::Secondary, false, _) => (theme::alpha(theme::PLUM_950, 0.5), theme::alpha(theme::EDGE, 0.45), theme::alpha(theme::DIM, 0.45)),
     };
     let off = if down { 1.0 } else { 0.0 };
@@ -454,7 +454,7 @@ fn slot(a: &Assets, r: Rect, item: Option<Item>, count: Option<u32>, selected: b
         let x = r.right() - text_w(a, &s, TextSize::S) - 4.0;
         let y = r.bottom() - 22.0;
         text(a, &s, x + 1.0, y + 1.5, TextSize::S, theme::alpha(theme::SHADE, 0.7));
-        text(a, &s, x, y, TextSize::S, if unavailable { DIM } else { CREAM });
+        text(a, &s, x, y, TextSize::S, if unavailable { TEXT_DIM } else { TEXT });
     }
     if selected {
         // Small corner tick that survives even when the icon is bright.
@@ -594,14 +594,14 @@ fn hud(g: &mut Game) {
     match w.research.current {
         Some(t) => {
             let tech = &TECHS[t];
-            text(&a, tech.name, r.x + 44.0, r.y + 46.0, TextSize::M, CREAM);
+            text(&a, tech.name, r.x + 44.0, r.y + 46.0, TextSize::M, TEXT);
             bar(Rect::new(r.x + 44.0, r.y + 66.0, 244.0, 8.0), w.research.progress as f32 / tech.units as f32, TEAL);
         }
         None => text(&a, "Pick a research · press T", r.x + 44.0, r.y + 51.0, TextSize::M, HONEY),
     }
     let sky = sky(w.time);
     let threat = if w.peaceful { "Peaceful".to_string() } else { format!("Hives {:.0}%", w.evolution * 100.0) };
-    text(&a, &format!("{} · {threat}", sky.label), r.x + space::L, r.y + 88.0, TextSize::S, DIM);
+    text(&a, &format!("{} · {threat}", sky.label), r.x + space::L, r.y + 88.0, TextSize::S, TEXT_DIM);
     g.ui_rects.push(r);
 }
 
@@ -628,7 +628,7 @@ fn quickbar(g: &mut Game) {
         let count = item.map(|i| g.world.player.inv.get(i));
         let selected = item.is_some() && g.tool == item;
         slot(&a, r, item, count, selected, count == Some(0));
-        text(&a, &((k + 1) % 10).to_string(), r.x + 5.0, r.y + 3.0, TextSize::Xs, DIM);
+        text(&a, &((k + 1) % 10).to_string(), r.x + 5.0, r.y + 3.0, TextSize::Xs, TEXT_DIM);
         if hovered(r)
             && let Some(i) = item
         {
@@ -648,7 +648,7 @@ fn craft_queue(g: &mut Game) {
     let y = ui_height() - QUICK_SLOT - space::L - SLOT - 28.0;
     let total = 10.0 * QUICK_SLOT + 9.0 * GAP;
     let x0 = (ui_width() - total) / 2.0;
-    text(&a, "Crafting · click to cancel", x0, y - 20.0, TextSize::S, DIM);
+    text(&a, "Crafting · click to cancel", x0, y - 20.0, TextSize::S, TEXT_DIM);
     let mut cancel = None;
     for (k, c) in g.world.player.queue.iter().take(12).enumerate() {
         let r = Rect::new(x0 + k as f32 * (SLOT + GAP), y, SLOT, SLOT);
@@ -667,7 +667,7 @@ fn craft_queue(g: &mut Game) {
     }
     if g.world.player.queue.len() > 12 {
         let more = format!("+{}", g.world.player.queue.len() - 12);
-        text(&a, &more, x0 + 12.0 * (SLOT + GAP), y + 13.0, TextSize::L, CREAM);
+        text(&a, &more, x0 + 12.0 * (SLOT + GAP), y + 13.0, TextSize::L, TEXT);
     }
     if let Some(k) = cancel {
         g.world.cancel_craft(k);
@@ -689,7 +689,7 @@ fn minimap(g: &mut Game) {
     rrect_lines(r, radius::SM, line::STRONG, BG);
     let scale = MINIMAP / MAP_W as f32;
     let p = g.world.player.pos * scale + r.point();
-    circle(p, 4.0, CREAM);
+    circle(p, 4.0, TEXT);
     circle_lines(p, 4.0, line::BASE, BG);
     let lo = g.cam.s2w(Vec2::ZERO) * scale + r.point();
     let hi = g.cam.s2w(vec2(screen_width(), screen_height())) * scale + r.point();
@@ -766,7 +766,7 @@ fn inventory_panel(g: &mut Game) {
     let cx = content.x + INV_COLS as f32 * (SLOT + GAP) + space::XL;
     draw_line(cx - space::M, content.y, cx - space::M, r.bottom() - 44.0, line::HAIR, EDGE);
     text(&a, "Workbench", cx, content.y, TextSize::Xl, HONEY);
-    text(&a, "Shift-click to craft five", content.right() - 200.0, content.y + 8.0, TextSize::Xs, DIM);
+    text(&a, "Shift-click to craft five", content.right() - 200.0, content.y + 8.0, TextSize::Xs, TEXT_DIM);
     let origin = vec2(cx, content.y + 38.0);
     let recipes: Vec<usize> = (0..RECIPES.len()).filter(|&id| RECIPES[id].hand && g.world.recipe_unlocked(id)).collect();
     let shift = is_key_down(KeyCode::LeftShift) || is_key_down(KeyCode::RightShift);
@@ -787,7 +787,7 @@ fn inventory_panel(g: &mut Game) {
         }
     }
     let foot = "Missing parts are crafted for you · machine-only recipes are set inside Assemblers.";
-    text(&a, foot, content.x, r.bottom() - 26.0, TextSize::S, DIM);
+    text(&a, foot, content.x, r.bottom() - 26.0, TextSize::S, TEXT_DIM);
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -888,7 +888,7 @@ fn research_panel(g: &mut Game) {
             if current { line::STRONG } else { line::BASE },
             if current { HONEY } else { EDGE },
         );
-        let name_col = if done { SAGE } else if current { HONEY } else if available { CREAM } else { DIM };
+        let name_col = if done { SAGE } else if current { HONEY } else if available { TEXT } else { TEXT_DIM };
         text(&a, tech.name, cr.x + space::L, cr.y + space::M, TextSize::L, name_col);
         if done {
             text_right(&a, "Done", cr.right() - space::L, cr.y + space::M + 2.0, TextSize::S, SAGE);
@@ -898,7 +898,7 @@ fn research_panel(g: &mut Game) {
             draw_item(&a, vec2(x + 10.0, cr.y + 44.0), 22.0, s);
             x += 22.0;
         }
-        text(&a, &format!("x{} · {}s each", tech.units, tech.time), x + space::S, cr.y + 40.0, TextSize::S, DIM);
+        text(&a, &format!("x{} · {}s each", tech.units, tech.time), x + space::S, cr.y + 40.0, TextSize::S, TEXT_DIM);
         let unlocks = match tech.bonus {
             Some(Bonus::ArmSpeed) => "Arms move 50% faster".to_string(),
             Some(Bonus::DrillSpeed) => "Drills mine 50% faster".to_string(),
@@ -1003,7 +1003,7 @@ fn building_panel(g: &mut Game, id: usize) {
     if e.kind.draw_kw() > 0.0 {
         let (p, col) = match e.net.and_then(|n| g.world.power.nets.get(n)) {
             None => ("No power · put a pole nearby".to_string(), PEACH),
-            Some(n) => (format!("Power {:.0}% · {:.0}/{:.0} kW", n.sat * 100.0, n.demand.min(n.supply), n.supply), DIM),
+            Some(n) => (format!("Power {:.0}% · {:.0}/{:.0} kW", n.sat * 100.0, n.demand.min(n.supply), n.supply), TEXT_DIM),
         };
         text(&a, &p, x + 102.0, y - 6.0, TextSize::S, col);
     }
@@ -1011,7 +1011,7 @@ fn building_panel(g: &mut Game, id: usize) {
 
     match &e.state {
         State::Crafter(c) => {
-            text(&a, "Recipe", x, y, TextSize::M, CREAM);
+            text(&a, "Recipe", x, y, TextSize::M, TEXT);
             y += 14.0;
             let recipes = g.world.machine_recipes(e.kind);
             let cols = machine_cols(content.w);
@@ -1033,28 +1033,28 @@ fn building_panel(g: &mut Game, id: usize) {
                 bar(Rect::new(x, y, content.w, 10.0), c.progress, HONEY);
                 y += 22.0;
                 if let Some((f, n)) = rec.fluid_in {
-                    text(&a, &format!("{} · {:.0}/{n}", f.name(), c.fluid_in), x, y, TextSize::S, DIM);
+                    text(&a, &format!("{} · {:.0}/{n}", f.name(), c.fluid_in), x, y, TextSize::S, TEXT_DIM);
                     y += 24.0;
                 }
                 for &(i, n) in rec.inputs {
                     draw_item(&a, vec2(x + 10.0, y + 2.0), 20.0, i);
-                    text(&a, &format!("{} · {}/{n}", i.name(), c.input.get(i)), x + 26.0, y, TextSize::S, DIM);
+                    text(&a, &format!("{} · {}/{n}", i.name(), c.input.get(i)), x + 26.0, y, TextSize::S, TEXT_DIM);
                     y += 24.0;
                 }
                 for (i, n) in c.out.iter() {
                     draw_item(&a, vec2(x + 10.0, y + 2.0), 20.0, i);
-                    text(&a, &format!("Ready · {} x{n}", i.name()), x + 26.0, y, TextSize::S, CREAM);
+                    text(&a, &format!("Ready · {} x{n}", i.name()), x + 26.0, y, TextSize::S, TEXT);
                     y += 24.0;
                 }
                 if let Some((f, _)) = rec.fluid_out {
-                    text(&a, &format!("Ready · {} {:.0}", f.name(), c.fluid_out), x, y, TextSize::S, CREAM);
+                    text(&a, &format!("Ready · {} {:.0}", f.name(), c.fluid_out), x, y, TextSize::S, TEXT);
                     y += 24.0;
                 }
                 if rec.fluid_in.is_some() || rec.fluid_out.is_some() {
-                    text(&a, "Pipes join at the teal in and peach out valves", x, y, TextSize::Xs, DIM);
+                    text(&a, "Pipes join at the teal in and peach out valves", x, y, TextSize::Xs, TEXT_DIM);
                 }
             } else if e.kind == Kind::Smelter {
-                text(&a, "Picks its recipe from the first ore it gets", x, y, TextSize::S, DIM);
+                text(&a, "Picks its recipe from the first ore it gets", x, y, TextSize::S, TEXT_DIM);
             }
             if primary_button(&a, left_btn, "Insert ingredients", c.recipe.is_some()) {
                 let n = g.world.insert_from_player(id);
@@ -1083,17 +1083,17 @@ fn building_panel(g: &mut Game, id: usize) {
             }
         }
         State::Generator { fuel, load, .. } => {
-            text(&a, &format!("Working at {:.0}% of 600 kW", load * 100.0), x, y, TextSize::M, CREAM);
+            text(&a, &format!("Working at {:.0}% of 600 kW", load * 100.0), x, y, TextSize::M, TEXT);
             y += 26.0;
             stock_lines(&a, fuel, x, &mut y);
-            text(&a, "Burns coal or fuel cells", x, y + 4.0, TextSize::S, DIM);
+            text(&a, "Burns coal or fuel cells", x, y + 4.0, TextSize::S, TEXT_DIM);
             if primary_button(&a, left_btn, "Add fuel", true) {
                 let n = g.world.insert_from_player(id);
                 g.toast(format!("Inserted {n} items"));
             }
         }
         State::Chest { stock } => {
-            text(&a, &format!("{}/{CHEST_CAP} stored", stock.total()), x, y, TextSize::M, CREAM);
+            text(&a, &format!("{}/{CHEST_CAP} stored", stock.total()), x, y, TextSize::M, TEXT);
             y += 26.0;
             let cols = machine_cols(content.w);
             let mut take = None;
@@ -1122,7 +1122,7 @@ fn building_panel(g: &mut Game, id: usize) {
             }
         }
         State::Sentry { ammo, shots, .. } => {
-            text(&a, &format!("{shots} shots loaded"), x, y, TextSize::M, CREAM);
+            text(&a, &format!("{shots} shots loaded"), x, y, TextSize::M, TEXT);
             y += 26.0;
             stock_lines(&a, ammo, x, &mut y);
             if primary_button(&a, left_btn, "Load ammo", true) {
@@ -1131,7 +1131,7 @@ fn building_panel(g: &mut Game, id: usize) {
             }
         }
         State::Engine { cores } => {
-            text(&a, &format!("Aether Cores · {cores}/{ENGINE_CORES}"), x, y, TextSize::M, CREAM);
+            text(&a, &format!("Aether Cores · {cores}/{ENGINE_CORES}"), x, y, TextSize::M, TEXT);
             y += 26.0;
             bar(
                 Rect::new(x, y, content.w, 12.0),
@@ -1144,7 +1144,7 @@ fn building_panel(g: &mut Game, id: usize) {
         }
         State::Drill { out, .. } => {
             for line in g.world.describe(e.pos).iter().skip(1) {
-                text(&a, line, x, y, TextSize::S, DIM);
+                text(&a, line, x, y, TextSize::S, TEXT_DIM);
                 y += 24.0;
             }
             if primary_button(&a, left_btn, "Take ore", !out.is_empty()) {
@@ -1153,7 +1153,7 @@ fn building_panel(g: &mut Game, id: usize) {
         }
         _ => {
             for line in g.world.describe(e.pos).iter().skip(1) {
-                text(&a, line, x, y, TextSize::S, DIM);
+                text(&a, line, x, y, TextSize::S, TEXT_DIM);
                 y += 24.0;
             }
         }
@@ -1163,7 +1163,7 @@ fn building_panel(g: &mut Game, id: usize) {
 fn stock_lines(a: &Assets, stock: &Stock, x: f32, y: &mut f32) {
     for (i, n) in stock.iter() {
         draw_item(a, vec2(x + 10.0, *y + 2.0), 20.0, i);
-        text(a, &format!("{} x{n}", i.name()), x + 26.0, *y, TextSize::S, DIM);
+        text(a, &format!("{} x{n}", i.name()), x + 26.0, *y, TextSize::S, TEXT_DIM);
         *y += 24.0;
     }
 }
@@ -1181,10 +1181,10 @@ fn radio(g: &Game, a: &Assets) {
     let bob = if g.music_on { (g.time * 2.4).sin() * 2.0 } else { 0.0 };
     let tint = if g.music_on { WHITE } else { theme::alpha(theme::WHITE, 0.4) };
     a.draw_centered("icon_note", vec2(x - 14.0, y - 5.0 + bob), Vec2::splat(20.0), 0.0, tint);
-    text(a, prefix, x, y, TextSize::S, DIM);
+    text(a, prefix, x, y, TextSize::S, TEXT_DIM);
     let mx = x + text_w(a, prefix, TextSize::S);
     text(a, "M", mx, y, TextSize::S, HONEY);
-    text(a, suffix, mx + text_w(a, "M", TextSize::S), y, TextSize::S, DIM);
+    text(a, suffix, mx + text_w(a, "M", TextSize::S), y, TextSize::S, TEXT_DIM);
 }
 
 fn toasts(g: &Game, a: &Assets) {
@@ -1209,20 +1209,20 @@ fn toasts(g: &Game, a: &Assets) {
 fn help(a: &Assets) {
     let lines = [
         ("Welcome to Cogworks", TextSize::Xl, HONEY),
-        ("", TextSize::M, CREAM),
-        ("WASD · walk          Wheel · zoom          E · backpack & workbench          T · research", TextSize::M, CREAM),
-        ("1–0 · quickbar      R · rotate      Q · copy building or empty hands      Esc · close", TextSize::M, CREAM),
-        ("Left click · build (drag belts, pipes, walls) or open a building", TextSize::M, CREAM),
-        ("Right hold · mine ore by hand, or pick a building back up", TextSize::M, CREAM),
-        ("F5 · save   F9 · load   O · pollution   P · peaceful   M · music   Space · pause", TextSize::M, CREAM),
-        ("", TextSize::M, CREAM),
-        ("Arms carry things from behind them to the front. Drills drop ore at their chute.", TextSize::M, CREAM),
-        ("Belts have two lanes; feeding from the side fills the near one.", TextSize::M, CREAM),
-        ("Machines need power: burn coal in a Generator, spread it with lamp poles.", TextSize::M, CREAM),
-        ("Smoke drifts out to the hives at the map's edge, and they come to visit.", TextSize::M, CREAM),
-        ("Fill Labs with data, research upward, and wake the Grand Engine.", TextSize::M, CREAM),
-        ("", TextSize::M, CREAM),
-        ("H · hide this note", TextSize::S, DIM),
+        ("", TextSize::M, TEXT),
+        ("WASD · walk          Wheel · zoom          E · backpack & workbench          T · research", TextSize::M, TEXT),
+        ("1–0 · quickbar      R · rotate      Q · copy building or empty hands      Esc · close", TextSize::M, TEXT),
+        ("Left click · build (drag belts, pipes, walls) or open a building", TextSize::M, TEXT),
+        ("Right hold · mine ore by hand, or pick a building back up", TextSize::M, TEXT),
+        ("F5 · save   F9 · load   O · pollution   P · peaceful   M · music   Space · pause", TextSize::M, TEXT),
+        ("", TextSize::M, TEXT),
+        ("Arms carry things from behind them to the front. Drills drop ore at their chute.", TextSize::M, TEXT),
+        ("Belts have two lanes; feeding from the side fills the near one.", TextSize::M, TEXT),
+        ("Machines need power: burn coal in a Generator, spread it with lamp poles.", TextSize::M, TEXT),
+        ("Smoke drifts out to the hives at the map's edge, and they come to visit.", TextSize::M, TEXT),
+        ("Fill Labs with data, research upward, and wake the Grand Engine.", TextSize::M, TEXT),
+        ("", TextSize::M, TEXT),
+        ("H · hide this note", TextSize::S, TEXT_DIM),
     ];
     let w = lines.iter().map(|(l, s, _)| text_w(a, l, *s)).fold(0.0, f32::max) + 2.0 * space::XL;
     let h = lines.len() as f32 * LINE + 2.0 * space::L;
@@ -1249,7 +1249,7 @@ fn overlays(g: &Game, a: &Assets) {
         banner("The Grand Engine hums awake · you did it", HONEY, 92.0);
     }
     if g.paused {
-        banner("Paused", CREAM, ui_height() / 2.0 - 110.0);
+        banner("Paused", TEXT, ui_height() / 2.0 - 110.0);
     }
 }
 
@@ -1265,7 +1265,7 @@ fn draw_tooltip(a: &Assets, lines: &[String]) {
     let r = Rect::new(x, y, width + 28.0, h);
     surface(r, Elevation::Tooltip);
     for (k, l) in lines.iter().enumerate() {
-        let col = if k == 0 { HONEY } else { CREAM };
+        let col = if k == 0 { HONEY } else { TEXT };
         text(a, l, x + 14.0, y + 8.0 + k as f32 * LINE, TextSize::M, col);
     }
 }

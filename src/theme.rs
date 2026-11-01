@@ -53,6 +53,26 @@ pub fn mix(a: Color, b: Color, t: f32) -> Color {
     )
 }
 
+/// WCAG 2.x relative luminance of a packed `0xrrggbb` colour (0..=1).
+pub fn luminance(hex: u32) -> f32 {
+    let c = rgb(hex);
+    let lin = |v: f32| {
+        if v <= 0.03928 {
+            v / 12.92
+        } else {
+            ((v + 0.055) / 1.055).powf(2.4)
+        }
+    };
+    0.2126 * lin(c[0]) + 0.7152 * lin(c[1]) + 0.0722 * lin(c[2])
+}
+
+/// WCAG contrast ratio between two packed colours (1.0 ..= 21.0).
+pub fn contrast(a: u32, b: u32) -> f32 {
+    let (la, lb) = (luminance(a), luminance(b));
+    let (hi, lo) = if la >= lb { (la, lb) } else { (lb, la) };
+    (hi + 0.05) / (lo + 0.05)
+}
+
 /// The warm lo-fi grade used by the world shader, applied to flat images too.
 /// Keeps the minimap's greens in the same light as the ground they represent.
 pub fn grade(c: Color) -> Color {
@@ -166,6 +186,41 @@ pub const STEEL_500: u32 = 0x9b938a;
 pub const STEEL_600: u32 = 0x7c746a;
 pub const STEEL_700: u32 = 0x655d55;
 
+// Lacquer red: UI accent, lanterns and machine roofs. 500 is the key colour.
+pub const LACQUER_700: u32 = 0x8c2f28;
+pub const LACQUER_600: u32 = 0xa63a32;
+pub const LACQUER_500: u32 = 0xc8453a;
+pub const LACQUER_400: u32 = 0xdc6b5e;
+pub const LACQUER_300: u32 = 0xec9588;
+
+// Verdigris teal: roof trim and metal accents.
+pub const VERDIGRIS_600: u32 = 0x468c82;
+pub const VERDIGRIS_500: u32 = 0x5fa89d;
+pub const VERDIGRIS_400: u32 = 0x83c2b8;
+
+// Cream paper: UI surfaces. 300 is the darker slot "well".
+pub const PAPER_100: u32 = 0xf6ead2;
+pub const PAPER_200: u32 = 0xecd9b0;
+pub const PAPER_300: u32 = 0xb39868;
+
+// Dark plum-brown ink for text.
+pub const INKBROWN_900: u32 = 0x3b2a2e;
+pub const INKBROWN_700: u32 = 0x5a4447;
+pub const INKBROWN_500: u32 = 0x6f5a55;
+
+// Lush soft meadow greens, replacing the olive sage ground.
+pub const MEADOW_700: u32 = 0x4c7a45;
+pub const MEADOW_600: u32 = 0x5b8c4d;
+pub const MEADOW_500: u32 = 0x6ca057;
+pub const MEADOW_400: u32 = 0x83b469;
+pub const MEADOW_300: u32 = 0x9cc87d;
+pub const MEADOW_200: u32 = 0xb8da9a;
+
+// Lavender-blue dusk.
+pub const DUSK_700: u32 = 0x4a4a78;
+pub const DUSK_500: u32 = 0x6e6a9c;
+pub const DUSK_300: u32 = 0xa8a3c8;
+
 // ---------------------------------------------------------------- named palette
 
 pub const INK: u32 = PLUM_700;
@@ -194,22 +249,30 @@ pub const STEEL_D: u32 = STEEL_700;
 pub const CHAR: u32 = 0x3f3739;
 pub const WHITE: u32 = 0xffffff;
 
-pub const BG: u32 = PLUM_900;
-pub const BG2: u32 = PLUM_800;
-pub const EDGE: u32 = PLUM_600;
+pub const BG: u32 = PAPER_100;
+pub const BG2: u32 = PAPER_200;
+pub const EDGE: u32 = LACQUER_500;
 pub const SHADE: u32 = 0x140d12;
 pub const SHADOW: u32 = 0x2a1c24;
 pub const BEVEL: u32 = 0xffd9a8;
 
+// Ink-on-paper text and UI tokens (Task 2). `CREAM` and `DIM` above stay as
+// the light paint/overlay colours used by sprites and the world.
+pub const TEXT: u32 = INKBROWN_900;
+pub const TEXT_DIM: u32 = INKBROWN_500;
+pub const TITLE: u32 = LACQUER_600;
+pub const TRIM_SHADOW: u32 = LACQUER_700;
+pub const SLOT_WELL: u32 = PAPER_300;
+
 // ---------------------------------------------------------------- terrain & ores
 
-pub const GRASS_A: u32 = SAGE_400;
-pub const GRASS_B: u32 = SAGE_500;
-pub const GRASS_WARM: u32 = 0xb4b27c;
-pub const BLADE_LIGHT: u32 = SAGE_200;
-pub const BLADE_DARK: u32 = SAGE_600;
-pub const MOSS: u32 = 0x7f9a62;
-pub const MOSS_DARK: u32 = SAGE_700;
+pub const GRASS_A: u32 = MEADOW_400;
+pub const GRASS_B: u32 = MEADOW_500;
+pub const GRASS_WARM: u32 = MEADOW_300;
+pub const BLADE_LIGHT: u32 = MEADOW_200;
+pub const BLADE_DARK: u32 = MEADOW_600;
+pub const MOSS: u32 = MEADOW_500;
+pub const MOSS_DARK: u32 = MEADOW_700;
 pub const STEM_LIGHT: u32 = 0x9fb07f;
 pub const PEBBLE_LIGHT: u32 = 0xd3c4ab;
 pub const PEBBLE_DARK: u32 = 0xa6977f;
@@ -306,64 +369,143 @@ pub const HEART: u32 = 0xf08c84;
 
 // ---------------------------------------------------------------- item colours
 
-// One colour per item, all drawn from the palette above.
-pub const ITEM_IRON_ORE: u32 = ORE_IRON;
-pub const ITEM_COPPER_ORE: u32 = ORE_COPPER_FACET;
+// One colour per item, all drawn from the palette above. Re-tuned in Task 2 so
+// every icon stands out on the paper `SLOT_WELL`: metals, ores and building
+// items read as dark ink, while glass, gems and glow items stay bright pastels.
+pub const ITEM_IRON_ORE: u32 = 0x5a554e;
+pub const ITEM_COPPER_ORE: u32 = 0x9a5231;
 pub const ITEM_COAL: u32 = ORE_COAL;
-pub const ITEM_STONE: u32 = ORE_STONE;
+pub const ITEM_STONE: u32 = 0x7d6748;
 pub const ITEM_QUARTZ: u32 = QUARTZ;
-pub const ITEM_IRON_PLATE: u32 = IRON_PLATE;
-pub const ITEM_COPPER_PLATE: u32 = COPPER_PLATE;
-pub const ITEM_BRICK: u32 = TERRA_500;
-pub const ITEM_STEEL: u32 = STEEL_400;
+pub const ITEM_IRON_PLATE: u32 = 0x6a625a;
+pub const ITEM_COPPER_PLATE: u32 = 0xa05a34;
+pub const ITEM_BRICK: u32 = TERRA_700;
+pub const ITEM_STEEL: u32 = 0x554f48;
 pub const ITEM_GLASS: u32 = GLASS;
-pub const ITEM_GEAR: u32 = STEEL_400;
-pub const ITEM_WIRE: u32 = HONEY_500;
-pub const ITEM_ROD: u32 = STEEL_600;
-pub const ITEM_CIRCUIT: u32 = CIRCUIT_HI;
-pub const ITEM_MOTOR: u32 = MOTOR_HI;
+pub const ITEM_GEAR: u32 = 0x554f48;
+pub const ITEM_WIRE: u32 = 0x8a5e38;
+pub const ITEM_ROD: u32 = 0x4f4843;
+pub const ITEM_CIRCUIT: u32 = CIRCUIT_LO;
+pub const ITEM_MOTOR: u32 = 0x3f4d78;
 pub const ITEM_LENS: u32 = GLASS_LIGHT;
 pub const ITEM_POLYMER: u32 = POLYMER_A;
-pub const ITEM_PROCESSOR: u32 = CIRCUIT_LO;
-pub const ITEM_FUEL_CELL: u32 = FUEL_LO;
-pub const ITEM_SLUG_CLIP: u32 = HONEY_600;
-pub const ITEM_HEAVY_CLIP: u32 = TERRA_400;
+pub const ITEM_PROCESSOR: u32 = PROCESSOR_LO;
+pub const ITEM_FUEL_CELL: u32 = 0x8a3a20;
+pub const ITEM_SLUG_CLIP: u32 = 0x8a5e38;
+pub const ITEM_HEAVY_CLIP: u32 = 0x8a3f2c;
 pub const ITEM_AETHER_CORE: u32 = AETHER_HI;
-pub const ITEM_SURVEY_DATA: u32 = DATA_RED;
-pub const ITEM_MECH_DATA: u32 = DATA_GREEN;
-pub const ITEM_OPTIC_DATA: u32 = DATA_BLUE;
-pub const ITEM_QUANTUM_DATA: u32 = DATA_PURPLE;
+pub const ITEM_SURVEY_DATA: u32 = 0x9a4438;
+pub const ITEM_MECH_DATA: u32 = 0x4f7a3e;
+pub const ITEM_OPTIC_DATA: u32 = 0x3f6a8c;
+pub const ITEM_QUANTUM_DATA: u32 = 0x5f4285;
 
 pub const ITEM_BELT: u32 = BELT_BAND;
 pub const ITEM_TUNNEL: u32 = 0x5a4a40;
 pub const ITEM_SPLITTER: u32 = 0x5f5a62;
-pub const ITEM_ARM: u32 = HONEY_500;
-pub const ITEM_CHEST: u32 = 0x8c6941;
-pub const ITEM_DRILL: u32 = HONEY_500;
+pub const ITEM_ARM: u32 = 0x8a5e38;
+pub const ITEM_CHEST: u32 = 0x7d5a38;
+pub const ITEM_DRILL: u32 = 0x8a5e38;
 pub const ITEM_SMELTER: u32 = 0x824b3a;
 pub const ITEM_ASSEMBLER: u32 = 0x48627f;
-pub const ITEM_LAB: u32 = TEAL_500;
+pub const ITEM_LAB: u32 = TEAL_700;
 pub const ITEM_GENERATOR: u32 = 0x6e5f55;
-pub const ITEM_POLE: u32 = 0x8c6e50;
+pub const ITEM_POLE: u32 = 0x6b4f36;
 pub const ITEM_SOLAR: u32 = SOLAR_LO;
-pub const ITEM_PIPE: u32 = STEEL_600;
+pub const ITEM_PIPE: u32 = 0x4f4843;
 pub const ITEM_WELLHEAD: u32 = 0x50463c;
-pub const ITEM_REFINERY: u32 = 0x96785a;
-pub const ITEM_MIXER: u32 = 0x647e6e;
-pub const ITEM_WALL: u32 = 0x969086;
+pub const ITEM_REFINERY: u32 = 0x6a5439;
+pub const ITEM_MIXER: u32 = 0x3f5a4d;
+pub const ITEM_WALL: u32 = 0x66605a;
 pub const ITEM_SENTRY: u32 = OLIVE;
-pub const ITEM_GRAND_ENGINE: u32 = 0x9660d2;
+pub const ITEM_GRAND_ENGINE: u32 = 0x5a3a86;
 
 // ---------------------------------------------------------------- minimap & world
 
-pub const MAP_GRASS: u32 = SAGE_500;
+pub const MAP_GRASS: u32 = MEADOW_500;
 pub const MAP_BUILDING: u32 = HONEY_400;
 pub const MAP_HIVE: u32 = 0xd65a96;
 pub const MAP_ENEMY: u32 = 0xe05050;
 pub const MAP_TAR: u32 = TAR_DARK;
-pub const WORLD_CLEAR: u32 = 0x788c64;
+pub const WORLD_CLEAR: u32 = MEADOW_500;
 pub const DIRT: u32 = 0x6b543d;
 pub const POLLUTION: u32 = 0x8c522e;
 pub const BADGE: u32 = CREAM;
 pub const HP_SAGE: u32 = SAGE_300;
 pub const HP_TERRA: u32 = TERRA_400;
+
+// ---------------------------------------------------------------- tests
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Body, secondary and title text must stay readable on the paper surfaces.
+    #[test]
+    fn ui_text_contrast_is_readable() {
+        assert!(contrast(TEXT, BG) >= 7.0, "TEXT on BG = {:.2}", contrast(TEXT, BG));
+        assert!(contrast(TEXT_DIM, BG) >= 4.5, "TEXT_DIM on BG = {:.2}", contrast(TEXT_DIM, BG));
+        assert!(contrast(TITLE, BG) >= 4.5, "TITLE on BG = {:.2}", contrast(TITLE, BG));
+        assert!(contrast(TEXT, BG2) >= 4.5, "TEXT on BG2 = {:.2}", contrast(TEXT, BG2));
+    }
+
+    /// Every item icon must stand out against the slot well, and the slot
+    /// count (drawn in TEXT) must stay readable on it too.
+    #[test]
+    fn items_stand_out_in_slot_well() {
+        let items = [
+            ITEM_IRON_ORE,
+            ITEM_COPPER_ORE,
+            ITEM_COAL,
+            ITEM_STONE,
+            ITEM_QUARTZ,
+            ITEM_IRON_PLATE,
+            ITEM_COPPER_PLATE,
+            ITEM_BRICK,
+            ITEM_STEEL,
+            ITEM_GLASS,
+            ITEM_GEAR,
+            ITEM_WIRE,
+            ITEM_ROD,
+            ITEM_CIRCUIT,
+            ITEM_MOTOR,
+            ITEM_LENS,
+            ITEM_POLYMER,
+            ITEM_PROCESSOR,
+            ITEM_FUEL_CELL,
+            ITEM_SLUG_CLIP,
+            ITEM_HEAVY_CLIP,
+            ITEM_AETHER_CORE,
+            ITEM_SURVEY_DATA,
+            ITEM_MECH_DATA,
+            ITEM_OPTIC_DATA,
+            ITEM_QUANTUM_DATA,
+            ITEM_BELT,
+            ITEM_TUNNEL,
+            ITEM_SPLITTER,
+            ITEM_ARM,
+            ITEM_CHEST,
+            ITEM_DRILL,
+            ITEM_SMELTER,
+            ITEM_ASSEMBLER,
+            ITEM_LAB,
+            ITEM_GENERATOR,
+            ITEM_POLE,
+            ITEM_SOLAR,
+            ITEM_PIPE,
+            ITEM_WELLHEAD,
+            ITEM_REFINERY,
+            ITEM_MIXER,
+            ITEM_WALL,
+            ITEM_SENTRY,
+            ITEM_GRAND_ENGINE,
+        ];
+        for item in items {
+            assert!(
+                contrast(item, SLOT_WELL) >= 1.6,
+                "item {item:#x} on SLOT_WELL = {:.2}",
+                contrast(item, SLOT_WELL)
+            );
+        }
+        assert!(contrast(TEXT, SLOT_WELL) >= 4.5, "TEXT on SLOT_WELL = {:.2}", contrast(TEXT, SLOT_WELL));
+    }
+}
