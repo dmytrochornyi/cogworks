@@ -62,6 +62,63 @@ pub fn world_action(paused: bool, pressed: bool) -> WorldAction {
     }
 }
 
+/// What the right mouse button should do this frame, decided purely from the
+/// button state and the tile under the cursor so it can be unit-tested.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum RightAction {
+    /// Keep deconstructing the building at this tile.
+    Deconstruct(IVec2),
+    /// Keep (or start) mining the ore at this tile.
+    Mine(IVec2),
+    /// Show a toast, leaving in-progress deconstruct/mining untouched.
+    Toast(&'static str),
+    /// Clear deconstruct progress and show a toast.
+    ResetToast(&'static str),
+    /// Do nothing this frame (held while paused): progress is frozen, not lost.
+    Freeze,
+    /// Clear both deconstruct and mining progress.
+    Reset,
+}
+
+/// Decides the right-button action for one frame.
+///
+/// `right_held` is true while the button is held *and* its gesture began in the
+/// world; `pressed` is true only on the frame it went down. `building` is the
+/// deconstructable building at the cursor (if any), `tile` the tile under the
+/// cursor, `in_reach` whether the player can reach it, and `ore_here` whether
+/// that tile holds ore.
+pub fn right_action(
+    right_held: bool,
+    pressed: bool,
+    building: Option<IVec2>,
+    tile: IVec2,
+    in_reach: bool,
+    ore_here: bool,
+    paused: bool,
+) -> RightAction {
+    if !right_held {
+        return RightAction::Reset;
+    }
+    if paused {
+        return if pressed {
+            match building {
+                Some(_) => RightAction::ResetToast("Paused"),
+                None => RightAction::Toast("Paused"),
+            }
+        } else {
+            RightAction::Freeze
+        };
+    }
+    match building {
+        Some(pos) if in_reach => RightAction::Deconstruct(pos),
+        Some(_) if pressed && !in_reach => RightAction::Toast("Out of reach"),
+        Some(_) => RightAction::Reset,
+        None if in_reach && ore_here => RightAction::Mine(tile),
+        None if pressed && !in_reach => RightAction::Toast("Out of reach"),
+        None => RightAction::Reset,
+    }
+}
+
 impl Game {
     pub(crate) fn input(&mut self, dt: f32) {
         let mut walk = Vec2::ZERO;
@@ -225,12 +282,15 @@ impl Game {
             }
         }
 
-        // Right: pick up buildings or mine ore.
-        let right = right_down && self.gesture_right == Gesture::World;
+        // Right: pick up buildings or mine ore. The decision is a pure function
+        // (unit-tested) so releasing the button or sliding off an ore/building
+        // always cancels, and only a held-while-paused frame freezes silently.
+        let right_held = right_down && self.gesture_right == Gesture::World;
         let in_reach = self.world.player.in_reach(tile);
         let building = self.world.entity_ref_at(tile).filter(|e| e.kind != Kind::Hive).map(|e| e.pos);
-        match (right, building, world_action(self.paused, right_press)) {
-            (true, Some(pos), WorldAction::Proceed) if in_reach => {
+        let ore_here = self.world.ore_at(tile).is_some();
+        match right_action(right_held, right_press, building, tile, in_reach, ore_here, self.paused) {
+            RightAction::Deconstruct(pos) => {
                 self.world.player.mining = None;
                 let progress = match self.deconstruct {
                     Some((p, t)) if p == pos => t + dt / DECONSTRUCT_TIME,
@@ -245,24 +305,19 @@ impl Game {
                     self.deconstruct = Some((pos, progress));
                 }
             }
-            (true, Some(_), WorldAction::Paused) => {
-                self.deconstruct = None;
-                self.toast("Paused");
-            }
-            (true, None, WorldAction::Proceed) if in_reach && self.world.ore_at(tile).is_some() => {
+            RightAction::Mine(tile) => {
                 self.deconstruct = None;
                 if self.world.player.mining.is_none_or(|(t, _)| t != tile) {
                     self.world.player.mining = Some((tile, 0.0));
                 }
             }
-            (true, None, WorldAction::Paused) => {
-                self.toast("Paused");
+            RightAction::Toast(msg) => self.toast(msg),
+            RightAction::ResetToast(msg) => {
+                self.deconstruct = None;
+                self.toast(msg);
             }
-            (true, _, WorldAction::Proceed) if right_press && !in_reach => {
-                self.toast("Out of reach");
-            }
-            (true, _, _) => {}
-            _ => {
+            RightAction::Freeze => {}
+            RightAction::Reset => {
                 self.deconstruct = None;
                 self.world.player.mining = None;
             }
@@ -382,5 +437,89 @@ mod tests {
         assert_eq!(world_action(true, true), WorldAction::Paused, "a fresh press while paused toasts once");
         // Later held frames while paused are silently ignored, not toasted every frame.
         assert_eq!(world_action(true, false), WorldAction::Ignore, "held frames while paused stay quiet");
+    }
+
+    #[test]
+    fn mining_stops_when_cursor_leaves_ore() {
+        // Held over empty grass that is still in reach: mining resets instead of
+        // silently carrying on with the old ore tile.
+        assert_eq!(
+            right_action(true, false, None, ivec2(3, 4), true, false, false),
+            RightAction::Reset
+        );
+    }
+
+    #[test]
+    fn deconstruct_resets_out_of_reach_held() {
+        // Held over a building just out of reach: deconstruct progress resets.
+        assert_eq!(
+            right_action(true, false, Some(ivec2(1, 2)), ivec2(5, 5), false, false, false),
+            RightAction::Reset
+        );
+    }
+
+    #[test]
+    fn out_of_reach_press_toasts() {
+        // A fresh press out of reach toasts once; nothing is reset on that frame.
+        assert_eq!(
+            right_action(true, true, None, ivec2(5, 5), false, false, false),
+            RightAction::Toast("Out of reach")
+        );
+        assert_eq!(
+            right_action(true, true, Some(ivec2(1, 2)), ivec2(5, 5), false, false, false),
+            RightAction::Toast("Out of reach")
+        );
+    }
+
+    #[test]
+    fn paused_hold_freezes() {
+        // Held while paused freezes silently (no toast, no reset).
+        assert_eq!(
+            right_action(true, false, Some(ivec2(1, 2)), ivec2(1, 2), true, false, true),
+            RightAction::Freeze
+        );
+    }
+
+    #[test]
+    fn paused_press_toasts_and_cancels_deconstruct() {
+        // A fresh press on a building while paused cancels deconstruct + toasts.
+        assert_eq!(
+            right_action(true, true, Some(ivec2(1, 2)), ivec2(1, 2), true, false, true),
+            RightAction::ResetToast("Paused")
+        );
+        // No building under the cursor: still toasts, with nothing to cancel.
+        assert_eq!(
+            right_action(true, true, None, ivec2(1, 2), true, true, true),
+            RightAction::Toast("Paused")
+        );
+    }
+
+    #[test]
+    fn not_held_resets() {
+        // Button released, or its gesture began on UI: reset either way.
+        assert_eq!(
+            right_action(false, false, None, ivec2(0, 0), true, false, false),
+            RightAction::Reset
+        );
+        assert_eq!(
+            right_action(false, false, Some(ivec2(1, 2)), ivec2(1, 2), true, false, false),
+            RightAction::Reset
+        );
+    }
+
+    #[test]
+    fn held_over_building_deconstructs() {
+        assert_eq!(
+            right_action(true, false, Some(ivec2(1, 2)), ivec2(1, 2), true, false, false),
+            RightAction::Deconstruct(ivec2(1, 2))
+        );
+    }
+
+    #[test]
+    fn held_over_ore_mines() {
+        assert_eq!(
+            right_action(true, false, None, ivec2(3, 4), true, true, false),
+            RightAction::Mine(ivec2(3, 4))
+        );
     }
 }
