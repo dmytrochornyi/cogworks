@@ -1,5 +1,7 @@
 /target
 cogworks_save.json
+cogworks_autosave.json
+*.json.tmp
 .superpowers/
 /drive-download-*/
 /samples/

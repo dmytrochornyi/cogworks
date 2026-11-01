@@ -75,6 +75,10 @@ pub struct Game {
     pub music_on: bool,
     /// Seconds since a gunshot was last heard, to keep sentries from drowning everything.
     shot_cooldown: f32,
+    /// Seconds of unpaused play since the last autosave.
+    autosave_timer: f32,
+    /// Off in the screenshot dev mode, so it never writes save files.
+    pub autosave: bool,
 }
 
 impl Game {
@@ -103,6 +107,8 @@ impl Game {
             renderer: Renderer::new(),
             music_on: true,
             shot_cooldown: 0.0,
+            autosave_timer: 0.0,
+            autosave: true,
         }
     }
 
@@ -262,7 +268,7 @@ impl Game {
             }
         }
         if is_key_pressed(KeyCode::F9) {
-            match save::load(save::SAVE_PATH) {
+            match save::newest_save().ok_or_else(|| "No save yet: press F5 to save".to_string()).and_then(save::load) {
                 Ok(world) => {
                     self.world = world;
                     self.cam.pos = self.world.player.pos;
@@ -379,6 +385,12 @@ impl Game {
 
     fn update(&mut self, dt: f32) {
         self.time += dt;
+        if self.autosave && !self.paused && self.world.player.alive() && save::autosave_tick(&mut self.autosave_timer, dt) {
+            match save::save(&mut self.world, save::AUTOSAVE_PATH) {
+                Ok(()) => self.toast("Autosaved"),
+                Err(e) => self.toast(e),
+            }
+        }
         for (_, t) in &mut self.toasts {
             *t -= dt;
         }
@@ -507,6 +519,7 @@ async fn main() {
     // Dev aid: render a few seconds, write a screenshot and quit.
     let screenshot = std::env::var("COGWORKS_SCREENSHOT").ok();
     if screenshot.is_some() {
+        game.autosave = false;
         game.show_help = std::env::var("COGWORKS_HELP").is_ok();
         game.panel = match std::env::var("COGWORKS_PANEL").as_deref() {
             Ok("research") => Panel::Research,
