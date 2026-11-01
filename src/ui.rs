@@ -526,6 +526,7 @@ impl Minimap {
     }
 
     fn refresh(&mut self, world: &World) {
+        let tint = sky(world.time).tint;
         for y in 0..MAP_H {
             for x in 0..MAP_W {
                 let p = ivec2(x, y);
@@ -537,13 +538,13 @@ impl Minimap {
                     (None, None) => theme::color(theme::MAP_GRASS),
                 };
                 // Same warm grade as the world shader, so the map reads as the same place.
-                self.img.set_pixel(x as u32, y as u32, theme::grade(col));
+                self.img.set_pixel(x as u32, y as u32, theme::grade(col, tint));
             }
         }
         for en in &world.enemies {
             let p = en.pos.floor().as_ivec2();
             if in_bounds(p) {
-                self.img.set_pixel(p.x as u32, p.y as u32, theme::grade(theme::color(theme::MAP_ENEMY)));
+                self.img.set_pixel(p.x as u32, p.y as u32, theme::grade(theme::color(theme::MAP_ENEMY), tint));
             }
         }
         match &self.tex {

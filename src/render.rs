@@ -113,6 +113,9 @@ pub struct Sky {
     pub night: f32,
     /// How strongly lamps, windows and lanterns shine: 0 by day, 1 at night.
     pub glow: f32,
+    /// Mood tint for the composite grade: rgb is the tint colour, `a` the
+    /// strength. Keeps grass from going olive/teal under the ambient multiply.
+    pub tint: Color,
     pub label: &'static str,
 }
 
@@ -130,6 +133,20 @@ fn lerp_keys(keys: &[(f32, f32)], p: f32) -> f32 {
     let f = ((p - t0) / (t1 - t0)).clamp(0.0, 1.0);
     let f = f * f * (3.0 - 2.0 * f);
     v0 + (v1 - v0) * f
+}
+
+/// Smoothly interpolate an RGBA value (tint) keyed by day fraction.
+fn lerp_keys4(keys: &[(f32, [f32; 4])], p: f32) -> [f32; 4] {
+    let k = keys.iter().rposition(|(t, _)| *t <= p).unwrap_or(0).min(keys.len() - 2);
+    let (t0, c0) = keys[k];
+    let (t1, c1) = keys[k + 1];
+    let f = ((p - t0) / (t1 - t0)).clamp(0.0, 1.0);
+    let f = f * f * (3.0 - 2.0 * f);
+    let mut out = [0.0; 4];
+    for i in 0..4 {
+        out[i] = c0[i] + (c1[i] - c0[i]) * f;
+    }
+    out
 }
 
 /// The pure core of `sky()`: `p` is the day fraction with 0 = midnight.
@@ -178,10 +195,29 @@ pub fn sky_at_phase(p: f32) -> Sky {
         (0.88, 1.0),
         (1.00, 1.0),
     ];
+    // Mood tint applied by COMPOSITE (and mirrored by theme::grade): a colour-
+    // grade mix into shadows and midtones. The ambient multiplies green grass,
+    // which would otherwise read olive at golden hour and teal at night; the
+    // tint counteracts that without cooling the warm lamp light. rgb is the
+    // tint colour, `a` the strength.
+    const TINT: [(f32, [f32; 4]); 10] = [
+        (0.00, [0.66, 0.42, 0.92, 0.70]), // violet-blue night
+        (0.22, [0.66, 0.42, 0.92, 0.70]), // night
+        (0.30, [1.00, 1.00, 1.00, 0.00]), // morning: no tint
+        (0.50, [1.00, 1.00, 1.00, 0.00]), // midday: no tint
+        (0.62, [1.00, 0.72, 0.42, 0.50]), // golden hour: peach-gold
+        (0.68, [1.00, 0.72, 0.42, 0.50]), // hold the peach through golden hour
+        (0.74, [0.86, 0.50, 0.86, 0.75]), // sunset: shift to lavender-pink
+        (0.80, [0.80, 0.45, 0.90, 0.85]), // dusk: lavender-pink
+        (0.88, [0.66, 0.42, 0.92, 0.70]), // night: violet-blue
+        (1.00, [0.66, 0.42, 0.92, 0.70]), // night
+    ];
+    let t = lerp_keys4(&TINT, p);
     Sky {
         ambient: theme::rgba(c[0], c[1], c[2], 1.0),
         night: lerp_keys(&NIGHT, p),
         glow: lerp_keys(&GLOW, p),
+        tint: theme::rgba(t[0], t[1], t[2], t[3]),
         label,
     }
 }
@@ -432,7 +468,7 @@ impl Renderer {
         }
         // Fireflies at night, golden dust by day, around the camera.
         let half = Cam::half_screen() / cam.zoom;
-        for (kind, want) in [(PKind::Firefly, (night * 40.0) as usize), (PKind::Mote, ((1.0 - night) * 22.0) as usize)] {
+        for (kind, want) in [(PKind::Firefly, (night * 20.0) as usize), (PKind::Mote, ((1.0 - night) * 22.0) as usize)] {
             let have = self.particles.iter().filter(|p| p.kind == kind).count();
             if have < want {
                 let (r1, r2, r3) = (self.rand(), self.rand(), self.rand());
@@ -485,13 +521,14 @@ impl Renderer {
         draw_lights(a, world, cam, t, sky.glow);
         for p in self.particles.iter().filter(|p| p.kind == PKind::Firefly) {
             let blink = 0.5 + 0.5 * (t * 3.0 + p.seed * 10.0).sin();
-            light(a, cam, p.pos, 0.7, theme::rgba(0.9, 1.0, 0.5, 0.5 * blink * sky.glow));
+            light(a, cam, p.pos, 0.45, theme::rgba(1.0, 0.88, 0.5, 0.5 * blink * sky.glow));
         }
         gl_use_default_material();
 
         set_default_camera();
         a.composite.set_texture("Light", light_rt.texture.clone());
         a.composite.set_uniform("Params", vec4(0.0, 0.0, 0.55, 0.35));
+        a.composite.set_uniform("Tint", vec4(sky.tint.r, sky.tint.g, sky.tint.b, sky.tint.a));
         a.composite.set_uniform("Screen", vec2(w, h));
         gl_use_material(&a.composite);
         // The render targets are stored bottom-up relative to the default
@@ -1030,5 +1067,25 @@ mod tests {
     fn dusk_phase_is_long() {
         let lit = (0..1000).filter(|i| sky_at_phase(*i as f32 / 1000.0).glow >= 0.5).count();
         assert!(lit as f32 / 1000.0 >= 0.40, "lanterns lit for only {lit}/1000 of the day");
+    }
+
+    #[test]
+    fn golden_hour_is_gold() {
+        let a = sky_at_phase(0.68).ambient;
+        assert!(a.r > a.g && a.g > a.b, "golden hour should be gold, got r={:.3} g={:.3} b={:.3}", a.r, a.g, a.b);
+        assert!(a.r - a.b >= 0.3, "golden hour needs warm r-b separation, got {:.3}", a.r - a.b);
+    }
+
+    #[test]
+    fn dusk_is_lavender() {
+        let t = sky_at_phase(0.8).tint;
+        assert!(t.b > t.g && t.r > t.g, "dusk tint should be lavender-pink, got r={:.3} g={:.3} b={:.3}", t.r, t.g, t.b);
+        assert!(t.a >= 0.25, "dusk tint strength too low: {:.3}", t.a);
+    }
+
+    #[test]
+    fn night_is_violet_not_teal() {
+        let t = sky_at_phase(0.95).tint;
+        assert!(t.b > t.g && t.r >= t.g, "night tint should be violet (not teal), got r={:.3} g={:.3} b={:.3}", t.r, t.g, t.b);
     }
 }

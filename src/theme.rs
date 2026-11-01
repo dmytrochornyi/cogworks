@@ -84,7 +84,10 @@ pub fn saturation(hex: u32) -> f32 {
 
 /// The warm lo-fi grade used by the world shader, applied to flat images too.
 /// Keeps the minimap's greens in the same light as the ground they represent.
-pub fn grade(c: Color) -> Color {
+/// `tint` is the mood tint from `sky_at_phase` (rgb colour, strength in alpha),
+/// mirroring the `Tint` uniform in `COMPOSITE`: applied mostly into shadows and
+/// midtones so lamp-lit areas keep their warmth.
+pub fn grade(c: Color, tint: Color) -> Color {
     let luma = 0.299 * c.r + 0.587 * c.g + 0.114 * c.b;
     let warm = Color::new(c.r * 1.06, c.g, c.b * 0.88, c.a);
     let mut out = mix(c, warm, 0.35);
@@ -92,7 +95,17 @@ pub fn grade(c: Color) -> Color {
     out.r = (out.r + 0.030 * lift).min(1.0);
     out.g = (out.g + 0.025 * lift).min(1.0);
     out.b = (out.b + 0.060 * lift).min(1.0);
-    Color::new(out.r, out.g, out.b, c.a)
+    // Mood tint, same maths as COMPOSITE: mix into shadows and midtones.
+    let tluma = 0.299 * out.r + 0.587 * out.g + 0.114 * out.b;
+    let amount = tint.a * (1.0 - tluma * 0.5);
+    let tinted = Color::new(
+        out.r * tint.r * 1.6 + tint.r * 0.08,
+        out.g * tint.g * 1.6 + tint.g * 0.08,
+        out.b * tint.b * 1.6 + tint.b * 0.08,
+        c.a,
+    );
+    let out = mix(out, tinted, amount);
+    Color::new(out.r.min(1.0), out.g.min(1.0), out.b.min(1.0), c.a)
 }
 
 // ---------------------------------------------------------------- type scale
@@ -249,7 +262,7 @@ pub const TERRA: u32 = TERRA_500;
 pub const RUST: u32 = TERRA_600;
 pub const MUSTARD: u32 = HONEY_500;
 pub const HONEY: u32 = HONEY_400;
-pub const LAMP: u32 = 0xffd28a;
+pub const LAMP: u32 = 0xffb27a;
 pub const SAGE: u32 = SAGE_300;
 pub const SAGE_D: u32 = SAGE_500;
 pub const OLIVE: u32 = SAGE_700;

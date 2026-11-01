@@ -89,6 +89,7 @@ impl Assets {
             MaterialParams {
                 uniforms: vec![
                     UniformDesc::new("Params", UniformType::Float4),
+                    UniformDesc::new("Tint", UniformType::Float4),
                     UniformDesc::new("Screen", UniformType::Float2),
                 ],
                 textures: vec!["Light".to_string()],
@@ -240,6 +241,7 @@ varying lowp vec2 uv;
 uniform sampler2D Texture;
 uniform sampler2D Light;
 uniform vec4 Params; // unused, unused, vignette, warmth
+uniform vec4 Tint; // mood tint: rgb colour, a strength
 uniform vec2 Screen; // framebuffer size (currently unused)
 void main() {
     vec3 c = texture2D(Texture, uv).rgb;
@@ -252,6 +254,9 @@ void main() {
     col = mix(col, col * vec3(1.06, 1.0, 0.88), Params.w);
     col += vec3(0.03, 0.025, 0.06) * (1.0 - luma);
     col = mix(vec3(luma), col, 0.90);
+    // Mood tint, mostly into shadows and midtones so lamp-lit areas stay warm.
+    float tluma = dot(col, vec3(0.299, 0.587, 0.114));
+    col = mix(col, col * Tint.rgb * 1.6 + Tint.rgb * 0.08, Tint.a * (1.0 - tluma * 0.5));
     vec2 d = uv - 0.5;
     col *= 1.0 - dot(d, d) * Params.z;
     gl_FragColor = vec4(col, 1.0);
