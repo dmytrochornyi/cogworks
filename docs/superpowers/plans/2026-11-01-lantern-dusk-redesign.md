@@ -264,4 +264,7 @@ No gameplay changes.
 - [ ] **Step 1:** Grep `src/` (excluding `theme.rs` and `paint.rs`) for raw hex literals `0x[0-9a-fA-F]{6}` used as colours. Expected: none new compared to `da87bfe`.
 - [ ] **Step 2:** Run `cargo build --release 2>&1 | grep -c warning`. Expected: no higher than at `da87bfe`.
 - [ ] **Step 3:** Run the game at 1440x900 and full 2560x1440. Take screenshots at day phases 0.5, 0.68, 0.8 and 0.95 with the help panel, inventory and research open in turn. Check against the spec's "Done when" list. Click a quickbar slot and a panel's close button to confirm hit-testing.
-- [ ] **Step 4:** Fix anything that fails, then commit: `chore: lantern-dusk redesign polish`.
+- [ ] **Step 4:** Fix these known issues from the reviewer's Task 4 screenshots:
+  - Slot item counts (`slot()` in `src/ui.rs`) are drawn in dark ink directly over the icon and are hard to read. Put each count on a small `BG` paper badge (rounded, `radius::SM`) at the slot's bottom-right.
+  - Research card unlock text (light teal) has weak contrast on cream. Use a darker verdigris token with `contrast(_, BG2) >= 4.5`, and add that assertion to `ui_text_contrast_is_readable`.
+- [ ] **Step 5:** Fix anything else that fails, then commit: `chore: lantern-dusk redesign polish`.
