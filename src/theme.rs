@@ -241,12 +241,12 @@ pub const INKBROWN_700: u32 = 0x5a4447;
 pub const INKBROWN_500: u32 = 0x6f5a55;
 
 // Lush soft meadow greens, replacing the olive sage ground.
-pub const MEADOW_700: u32 = 0x4c7a45;
-pub const MEADOW_600: u32 = 0x5b8c4d;
-pub const MEADOW_500: u32 = 0x6ca057;
-pub const MEADOW_400: u32 = 0x83b469;
-pub const MEADOW_300: u32 = 0x9cc87d;
-pub const MEADOW_200: u32 = 0xb8da9a;
+pub const MEADOW_700: u32 = 0x52782f;
+pub const MEADOW_600: u32 = 0x669036;
+pub const MEADOW_500: u32 = 0x7aa43e;
+pub const MEADOW_400: u32 = 0x92b84c;
+pub const MEADOW_300: u32 = 0xaccb62;
+pub const MEADOW_200: u32 = 0xc8dc86;
 
 // Lavender-blue dusk.
 pub const DUSK_700: u32 = 0x4a4a78;
@@ -342,10 +342,10 @@ pub const TAR_BUBBLE: u32 = 0x8a7090;
 
 // ---------------------------------------------------------------- logistics
 
-pub const BELT_BAND: u32 = 0x4b3328;
-pub const BELT_RIDGE: u32 = 0x62442f;
-pub const BELT_RAIL_HI: u32 = 0xd6b45f;
-pub const BELT_RAIL_LO: u32 = 0x94702f;
+pub const BELT_BAND: u32 = 0x3b3230;
+pub const BELT_RIDGE: u32 = 0x5a4a40;
+pub const BELT_RAIL_HI: u32 = 0xf0a04a;
+pub const BELT_RAIL_LO: u32 = 0xa85a26;
 pub const TUNNEL_STONE: u32 = 0xb7a58a;
 pub const TUNNEL_MOUTH: u32 = 0x1f171b;
 pub const WOOD: u32 = 0xb07d55;

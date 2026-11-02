@@ -348,7 +348,7 @@ const BAND: C = BELT_BAND;
 const RIDGE: C = BELT_RIDGE;
 
 fn rails(cv: &mut Canvas, sdf_rail: impl Fn(Vec2) -> f32 + Copy) {
-    cv.shape(sdf_rail, |p| mix(BELT_RAIL_HI, BELT_RAIL_LO, (p.y % 64.0) / 64.0), 1.8);
+    cv.shape(sdf_rail, |p| mix(BELT_RAIL_HI, BELT_RAIL_LO, (p.y % 64.0) / 64.0), 2.6);
 }
 
 pub fn belt(frame: u32) -> Canvas {
@@ -364,7 +364,8 @@ pub fn belt(frame: u32) -> Canvas {
         rails(&mut cv, move |p| rbox(p, -4.0, y, 72.0, 7.0, 2.0));
         for x in [8.0, 40.0] {
             let c = v(x, y + 3.5);
-            cv.fill(move |p| circle(p, c, 1.3), |_| with_alpha(CREAM, 0.8));
+            cv.fill(move |p| circle(p, c, 2.2), |_| with_alpha(INK, 0.85));
+            cv.fill(move |p| circle(p, c - v(0.5, 0.5), 1.1), |_| with_alpha(CREAM, 0.9));
         }
     }
     cv
