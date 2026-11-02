@@ -151,7 +151,17 @@ impl Fluid {
 
 /// Item counts indexed by `Item::idx`.
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
+#[serde(from = "Vec<u32>")]
 pub struct Stock(Vec<u32>);
+
+/// Saves from before an item was added hold fewer counts: pad them (and trim
+/// any extra) so every item has a slot.
+impl From<Vec<u32>> for Stock {
+    fn from(mut v: Vec<u32>) -> Self {
+        v.resize(Item::ALL.len(), 0);
+        Stock(v)
+    }
+}
 
 impl Default for Stock {
     fn default() -> Self {
@@ -433,4 +443,17 @@ pub const ENGINE_CORES: u32 = 50;
 /// Whether a recipe is available without research.
 pub fn starts_unlocked(recipe: &str) -> bool {
     !TECHS.iter().any(|t| t.recipes.contains(&recipe))
+}
+
+#[cfg(test)]
+mod stock_tests {
+    use super::*;
+
+    #[test]
+    fn old_saves_with_fewer_items_load_padded() {
+        let short = serde_json::to_string(&vec![3u32; Item::ALL.len() - 1]).unwrap();
+        let s: Stock = serde_json::from_str(&short).unwrap();
+        assert_eq!(s.get(Item::ALL[0]), 3);
+        assert_eq!(s.get(*Item::ALL.last().unwrap()), 0, "the newest item gets an empty slot");
+    }
 }
