@@ -336,6 +336,11 @@ impl Audio {
     }
 
     /// Toggles music and returns the new on-state, for the radio widget.
+    /// Sets the bus levels (from the settings); takes effect on the next update.
+    pub fn set_levels(&mut self, levels: Levels) {
+        self.levels = levels;
+    }
+
     pub fn toggle_music(&mut self) -> bool {
         self.muted = !self.muted;
         !self.muted

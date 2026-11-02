@@ -1,6 +1,6 @@
 use std::rc::Rc;
 
-use macroquad::prelude::{BLACK, IVec2, MouseButton, Rect, clear_background, get_frame_time, is_mouse_button_pressed};
+use macroquad::prelude::{BLACK, IVec2, MouseButton, Rect, clear_background, get_frame_time, is_mouse_button_pressed, vec2};
 
 use crate::assets::Assets;
 use crate::audio::Audio;
@@ -8,8 +8,26 @@ use crate::input::Gesture;
 use crate::items::Item;
 use crate::render::{Cam, Renderer, sky};
 use crate::save;
+use crate::settings::Settings;
 use crate::ui;
 use crate::world::{Dir, Fx, Sfx, World};
+
+/// Which page of a full-screen menu is showing.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum MenuPage {
+    Main,
+    NewGame,
+    Settings,
+}
+
+/// What the game is showing: the title screen, play, or the pause menu. The
+/// world only simulates while playing.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Screen {
+    Title(MenuPage),
+    Playing,
+    Paused(MenuPage),
+}
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Panel {
@@ -62,11 +80,21 @@ pub struct Game {
     autosave_timer: f32,
     /// Off in the screenshot dev mode, so it never writes save files.
     pub autosave: bool,
+    pub screen: Screen,
+    /// Whether `world` is a real game (loaded or started), so the title screen
+    /// can offer Continue. False while it's only a fresh backdrop.
+    pub has_game: bool,
+    pub settings: Settings,
+    /// Set by the menus' Quit; the main loop exits when it sees it.
+    pub quit: bool,
+    /// 0→1 fade-in of the current menu screen.
+    pub(crate) menu_fade: f32,
 }
 
 impl Game {
-    pub(crate) fn new(world: World, assets: Rc<Assets>, audio: Audio) -> Self {
+    pub(crate) fn new(world: World, assets: Rc<Assets>, mut audio: Audio, settings: Settings) -> Self {
         let cam = Cam { pos: world.player.pos, zoom: 52.0 };
+        audio.set_levels(settings.levels());
         Game {
             world,
             cam,
@@ -96,7 +124,82 @@ impl Game {
             shot_cooldown: 0.0,
             autosave_timer: 0.0,
             autosave: true,
+            screen: Screen::Title(MenuPage::Main),
+            has_game: false,
+            settings,
+            quit: false,
+            menu_fade: 0.0,
         }
+    }
+
+    /// Back to play from a menu.
+    pub(crate) fn resume(&mut self) {
+        if matches!(self.screen, Screen::Title(_)) {
+            self.cam.pos = self.world.player.draw_pos;
+            self.cam.zoom = 52.0;
+        }
+        self.screen = Screen::Playing;
+        self.has_game = true;
+    }
+
+    /// Opens the pause menu, closing any window and putting the tool away.
+    pub(crate) fn pause_menu(&mut self) {
+        self.panel = Panel::None;
+        self.screen = Screen::Paused(MenuPage::Main);
+        self.menu_fade = 0.0;
+    }
+
+    /// Starts a fresh world and drops straight into it.
+    pub(crate) fn new_game(&mut self, peaceful: bool) {
+        let seed = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos() as u64)
+            .unwrap_or(0x9E37_79B9);
+        self.world = World::new(seed);
+        self.world.peaceful = peaceful;
+        self.panel = Panel::None;
+        self.tool = None;
+        self.show_help = true;
+        self.paused = false;
+        self.autosave_timer = 0.0;
+        self.resume();
+    }
+
+    /// Saves to the manual save slot (F5), with a toast either way.
+    pub(crate) fn save_game(&mut self) {
+        match save::save(&mut self.world, save::SAVE_PATH) {
+            Ok(()) => self.toast(format!("Saved to {}", save::SAVE_PATH)),
+            Err(e) => self.toast(e),
+        }
+    }
+
+    /// Leaves play for the title screen, autosaving so Continue picks up here.
+    pub(crate) fn to_title(&mut self) {
+        if self.autosave
+            && self.world.player.alive()
+            && let Err(e) = save::save(&mut self.world, save::AUTOSAVE_PATH)
+        {
+            self.toast(e);
+        }
+        self.panel = Panel::None;
+        self.tool = None;
+        self.screen = Screen::Title(MenuPage::Main);
+        self.menu_fade = 0.0;
+    }
+
+    /// Applies changed settings straight away (volumes); fullscreen is switched
+    /// by the settings page itself.
+    pub(crate) fn apply_settings(&mut self, s: Settings) {
+        self.settings = s;
+        self.audio.set_levels(s.levels());
+    }
+
+    /// On the title screen the camera drifts slowly over the backdrop world.
+    pub(crate) fn drift_camera(&mut self, dt: f32) {
+        let t = self.time;
+        let target = self.world.player.pos + vec2((t * 0.05).sin() * 7.0, (t * 0.037).cos() * 3.5);
+        self.cam.pos += (target - self.cam.pos) * (1.0 - (-dt * 1.5).exp());
+        self.cam.zoom += (44.0 - self.cam.zoom) * (1.0 - (-dt * 2.0).exp());
     }
 
     /// Eases the camera toward where the robot is drawn this frame.
@@ -119,7 +222,8 @@ impl Game {
 
     pub(crate) fn update(&mut self, dt: f32) {
         self.time += dt;
-        if self.autosave && !self.paused && self.world.player.alive() && save::autosave_tick(&mut self.autosave_timer, dt) {
+        self.menu_fade = (self.menu_fade + dt / 0.35).min(1.0);
+        if self.autosave && self.screen == Screen::Playing && !self.paused && self.world.player.alive() && save::autosave_tick(&mut self.autosave_timer, dt) {
             match save::save(&mut self.world, save::AUTOSAVE_PATH) {
                 Ok(()) => self.toast("Autosaved"),
                 Err(e) => self.toast(e),

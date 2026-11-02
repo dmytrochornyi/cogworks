@@ -119,6 +119,7 @@ fn main() {
         ("orefield_coal", 256, 256),
         ("orefield_stone", 256, 256),
         ("orefield_quartz", 256, 256),
+        ("logo", 640, 208),
         ("tree_0", 128, 160),
         ("tree_1", 96, 176),
         ("tree_2", 96, 176),

@@ -154,6 +154,7 @@ pub const SPRITES: &[(&str, &[u8])] = &[
     ("orefield_coal", include_bytes!("../assets/sprites/orefield_coal.png")),
     ("orefield_stone", include_bytes!("../assets/sprites/orefield_stone.png")),
     ("orefield_quartz", include_bytes!("../assets/sprites/orefield_quartz.png")),
+    ("logo", include_bytes!("../assets/sprites/logo.png")),
     ("tree_0", include_bytes!("../assets/sprites/tree_0.png")),
     ("tree_1", include_bytes!("../assets/sprites/tree_1.png")),
     ("tree_2", include_bytes!("../assets/sprites/tree_2.png")),

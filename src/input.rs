@@ -197,8 +197,11 @@ impl Game {
         if is_key_pressed(KeyCode::Escape) {
             if self.panel != Panel::None {
                 self.panel = Panel::None;
-            } else {
+            } else if self.tool.is_some() {
                 self.tool = None;
+            } else {
+                self.pause_menu();
+                return;
             }
         }
         if is_key_pressed(KeyCode::E) || is_key_pressed(KeyCode::Tab) {

@@ -6,6 +6,7 @@ use crate::{Game, Panel as OpenPanel};
 
 mod hud;
 mod metrics;
+mod menus;
 mod minimap;
 mod panels;
 mod primitives;
@@ -28,6 +29,15 @@ pub fn draw(g: &mut Game) {
     g.tooltip = None;
     set_camera(&ui_camera(ui_width(), ui_height()));
     primitives::set_paper(g.assets.atlas.clone(), g.assets.rect("paper"));
+
+    if let crate::game::Screen::Title(page) = g.screen {
+        menus::title(g, page);
+        let a = g.assets.clone();
+        hud::toasts(g, &a);
+        g.draw_ui_cursor();
+        set_default_camera();
+        return;
+    }
 
     hud::hud(g);
     hud::quickbar(g);
@@ -53,6 +63,10 @@ pub fn draw(g: &mut Game) {
         hud::help(g, &a);
     }
     hud::overlays(g, &a);
+    if let crate::game::Screen::Paused(page) = g.screen {
+        g.tooltip = None;
+        menus::pause(g, page);
+    }
     tooltip::draw_tooltip(&a, &g.world, &g.tooltip);
     g.draw_ui_cursor();
     set_default_camera();
