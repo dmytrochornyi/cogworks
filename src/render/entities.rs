@@ -364,7 +364,7 @@ fn draw_entity(a: &Assets, e: &Entity, cam: &Cam, t: f32) {
         }
         State::Sentry { aim, .. } => {
             draw_kind(a, e.kind, e.dir, s0, z, WHITE);
-            a.draw_centered("sentry_head", at(64.0, 57.0), Vec2::splat(96.0 * k), *aim, WHITE);
+            a.draw_centered("sentry_head", at(64.0, 46.0), Vec2::splat(88.0 * k), *aim, WHITE);
             return;
         }
         _ => {}
@@ -384,36 +384,36 @@ fn draw_entity(a: &Assets, e: &Entity, cam: &Cam, t: f32) {
     }
     draw_kind(a, e.kind, e.dir, s0, z, WHITE);
     match e.kind {
-        Kind::Drill => a.draw_centered("drill_bit", at(64.0, 56.0), Vec2::splat(64.0 * k), spin(5.0), WHITE),
+        Kind::Drill => a.draw_centered("drill_bit", at(63.0, 47.0), Vec2::splat(44.0 * k), spin(5.0), WHITE),
         Kind::Smelter if e.active => {
             let breathe = 0.925 + 0.075 * (t * 1.1 + e.pos.x as f32 * 2.3).sin();
             a.draw_centered("glow", at(64.0, 104.0), vec2(70.0, 40.0) * k, 0.0, theme::rgba(1.0, 0.55, 0.2, 0.75 * breathe));
         }
-        Kind::Assembler => a.draw_centered("assembler_gear", at(96.0, 86.0), Vec2::splat(80.0 * k), spin(1.6), WHITE),
+        Kind::Assembler => a.draw_centered("assembler_gear", at(97.0, 68.0), Vec2::splat(80.0 * k), spin(1.6), WHITE),
         Kind::Lab => {
             let pulse = if e.active { 1.0 + 0.1 * (t * 4.0).sin() } else { 0.75 };
             let tint = if e.active { WHITE } else { theme::rgba(0.7, 0.75, 0.75, 0.6) };
-            a.draw_centered("lab_orb", at(96.0, 87.0), Vec2::splat(64.0 * k * pulse), 0.0, tint);
+            a.draw_centered("lab_orb", at(95.0, 92.0), Vec2::splat(64.0 * k * pulse), 0.0, tint);
         }
-        Kind::Generator => a.draw_centered("generator_wheel", at(74.0, 61.0), Vec2::splat(64.0 * k), spin(6.0), WHITE),
+        Kind::Generator => a.draw_centered("generator_wheel", at(87.0, 63.0), Vec2::splat(44.0 * k), spin(6.0), WHITE),
         Kind::Wellhead => {
             let rock = if e.active { (t * 2.5).sin() * 0.22 } else { 0.0 };
-            let pivot = at(78.0, 52.0);
+            let pivot = at(64.0, 30.0);
             a.draw("wellhead_beam", pivot - vec2(62.0, 20.0) * k, vec2(112.0, 40.0) * k, SpriteParams {
                 rotation: rock,
                 pivot: Some(pivot),
                 ..Default::default()
             });
         }
-        Kind::Mixer => a.draw_centered("mixer_paddle", at(64.0, 57.0), Vec2::splat(56.0 * k), spin(4.0), WHITE),
+        Kind::Mixer => a.draw_centered("mixer_paddle", at(64.0, 33.0), Vec2::splat(56.0 * k), spin(4.0), WHITE),
         Kind::GrandEngine => {
             let cores = match e.state {
                 State::Engine { cores } => cores as f32 / ENGINE_CORES as f32,
                 _ => 0.0,
             };
-            a.draw_centered("engine_ring", at(128.0, 115.0), Vec2::splat(160.0 * k), t * (0.2 + cores * 2.0), WHITE);
+            a.draw_centered("engine_ring", at(128.0, 97.0), Vec2::splat(132.0 * k), t * (0.2 + cores * 2.0), WHITE);
             let pulse = 0.7 + 0.3 * cores + 0.05 * (t * 3.0).sin();
-            a.draw_centered("engine_core", at(128.0, 115.0), Vec2::splat(96.0 * k * pulse), 0.0, WHITE);
+            a.draw_centered("engine_core", at(128.0, 97.0), Vec2::splat(76.0 * k * pulse), 0.0, WHITE);
         }
         _ => {}
     }

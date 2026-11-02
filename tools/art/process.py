@@ -46,8 +46,9 @@ def dilate(mask, r=1):
     return out
 
 
-def background_mask(rgb, tol):
-    """Pixels connected to the border that are close to the border's colour."""
+def background_mask(rgb, tol, holes=False):
+    """Pixels connected to the border that are close to the border's colour.
+    With holes, enclosed background-coloured areas of some size count too."""
     h, w, _ = rgb.shape
     border = np.concatenate([rgb[0], rgb[-1], rgb[:, 0], rgb[:, -1]]).astype(float)
     bg = np.median(border, axis=0)
@@ -58,8 +59,12 @@ def background_mask(rgb, tol):
     while True:
         grown = dilate(filled) & close
         if (grown == filled).all():
-            return filled
+            break
         filled = grown
+    if holes:
+        for x0, y0, x1, y1 in components(close & ~filled, min_area=h * w // 4000):
+            filled[y0:y1, x0:x1] |= close[y0:y1, x0:x1]
+    return filled
 
 
 def components(mask, min_area):
@@ -120,6 +125,7 @@ def main():
     ap.add_argument("--fill", type=float, default=0.94, help="fraction of the sprite box the art may fill")
     ap.add_argument("--anchor", choices=["center", "bottom"], default="center")
     ap.add_argument("--join", type=int, default=3, help="px gap bridged when grouping a sheet's objects")
+    ap.add_argument("--holes", action="store_true", help="also clear enclosed background-coloured areas (rings)")
     ap.add_argument("--tol", type=float, default=40.0, help="background colour tolerance (0-441)")
     a = ap.parse_args()
 
@@ -135,7 +141,7 @@ def main():
         shutil.copyfile(a.raw, raw_copy)
 
     rgb = np.asarray(Image.open(raw_copy).convert("RGB"))
-    fg = ~background_mask(rgb, a.tol)
+    fg = ~background_mask(rgb, a.tol, a.holes)
     # Pull the cut edge in by a pixel and feather it, so no light fringe survives.
     fg_soft = ~dilate(~fg, 1)
     alpha = Image.fromarray((fg_soft * 255).astype(np.uint8)).filter(ImageFilter.GaussianBlur(0.6))
