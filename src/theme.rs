@@ -241,12 +241,12 @@ pub const INKBROWN_700: u32 = 0x5a4447;
 pub const INKBROWN_500: u32 = 0x6f5a55;
 
 // Lush soft meadow greens, replacing the olive sage ground.
-pub const MEADOW_700: u32 = 0x52782f;
-pub const MEADOW_600: u32 = 0x669036;
-pub const MEADOW_500: u32 = 0x7aa43e;
-pub const MEADOW_400: u32 = 0x92b84c;
-pub const MEADOW_300: u32 = 0xaccb62;
-pub const MEADOW_200: u32 = 0xc8dc86;
+pub const MEADOW_700: u32 = 0x4e7834;
+pub const MEADOW_600: u32 = 0x5f8e3e;
+pub const MEADOW_500: u32 = 0x72a24c;
+pub const MEADOW_400: u32 = 0x86bc60;
+pub const MEADOW_300: u32 = 0xa4cc78;
+pub const MEADOW_200: u32 = 0xc2de96;
 
 // Lavender-blue dusk.
 pub const DUSK_700: u32 = 0x4a4a78;
