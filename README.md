@@ -1,6 +1,6 @@
 <div align="center">
 
-# ⚙️ Cogworks
+<img src="docs/logo.png" alt="Cogworks" width="560">
 
 **A cozy 2D automation game written in Rust.**
 
@@ -12,7 +12,7 @@ research tree, keep the smoke-sensitive hives at bay, and finally wake the
 ![macroquad](https://img.shields.io/badge/engine-macroquad-6e4a7e)
 ![License: PolyForm Noncommercial](https://img.shields.io/badge/license-PolyForm_Noncommercial-orange)
 
-![A small factory at sunset, lit by lamp poles](docs/screenshots/sunset-factory.jpg)
+![The title screen over a busy late-game base](docs/screenshots/title-screen.jpg)
 
 </div>
 
@@ -25,19 +25,23 @@ Build a chain from drills to smelters to assemblers to labs, unlock new
 technology one vial at a time, and grow the base until it can power the
 Grand Engine.
 
-Sprites are painted procedurally by the project's own asset generator, and
-sprites, sounds and the font are all embedded in a single executable.
+The art is a mix of painted sprites (kept in `assets/art/`) and pieces
+painted by the project's own tools: seamless ore fields, copper pipes, the
+robot's turned views and the logo. Sprites, sounds and the font are all
+embedded in a single executable.
 
 ## Screenshots
 
 | | |
 | :---: | :---: |
-| ![The lamps come on at dusk](docs/screenshots/dusk-lanterns.jpg) | ![A fresh world on the first morning, with the welcome note](docs/screenshots/first-morning.jpg) |
-| *Lamp poles light the base as dusk falls* | *The first morning: ore fields and the welcome note* |
-| ![Backpack and workbench](docs/screenshots/backpack-workbench.jpg) | ![Research tree](docs/screenshots/research.jpg) |
+| ![A late-game factory: assemblers and labs on one power grid](docs/screenshots/factory.jpg) | ![Ore deposits as continuous fields next to a forest](docs/screenshots/ore-fields.jpg) |
+| *A late-game base: assembly lines feeding the labs* | *Ore deposits, each one continuous field, beside the woods* |
+| ![Wellhead, refinery and mixers joined by copper pipes](docs/screenshots/oil-and-pipes.jpg) | ![The first morning, with the welcome note](docs/screenshots/first-morning.jpg) |
+| *Tar to naphtha: wellhead, refinery and mixers on copper pipes* | *The first morning: a few tools and the welcome note* |
+| ![Backpack and workbench with a recipe card](docs/screenshots/backpack-workbench.jpg) | ![Research tree](docs/screenshots/research.jpg) |
 | *Backpack and workbench: missing parts are crafted for you* | *The research tree, from Logistics up to the Grand Engine* |
-| ![Pollution overlay](docs/screenshots/pollution-overlay.jpg) | |
-| *Pollution overlay: smoke drifts toward the hives* | |
+| ![The lamps come on at dusk](docs/screenshots/dusk-lanterns.jpg) | |
+| *Lamp poles light the base as dusk falls* | |
 
 ## Features
 
@@ -48,7 +52,9 @@ sprites, sounds and the font are all embedded in a single executable.
 - **Fluids**: wellheads, pipes, refineries and mixers for crude tar and naphtha
 - **Defence**: pollution wakes the hives; hold them off with walls and sentries, or play in peaceful mode
 - **Atmosphere**: a day-to-dusk cycle with real-time lighting, a lo-fi radio, ambience and foley
-- **Quality of life**: quickbar binding, building copy (Q), minimap, save/load and autosave
+- **Menus**: a title screen with Continue and New game (normal or peaceful), a pause menu, and settings for music, ambience, effects and fullscreen
+- **A hovering robot**: glides smoothly and turns to face all eight directions as it moves
+- **Quality of life**: quickbar binding, building copy (Q), icon tooltips, minimap, save/load and autosave
 
 ## Download
 
@@ -73,7 +79,9 @@ sudo apt install pkg-config libx11-dev libxi-dev libgl1-mesa-dev libasound2-dev
 ```
 
 The game saves to `cogworks_save.json` (F5) and `cogworks_autosave.json`
-in the directory you run it from. F9 loads the newest of the two.
+in the directory you run it from. The title screen continues the newest of
+the two, and F9 loads it during play. Settings are kept in
+`cogworks_settings.json`. To skip the title screen, run `cogworks <save file>`.
 
 ## Controls
 
@@ -88,7 +96,7 @@ in the directory you run it from. F9 loads the newest of the two.
 | <kbd>Q</kbd> | Copy the hovered building, or empty your hands |
 | <kbd>E</kbd> / <kbd>Tab</kbd> | Backpack and workbench |
 | <kbd>T</kbd> | Research |
-| <kbd>Esc</kbd> | Close the panel, or put the tool away |
+| <kbd>Esc</kbd> | Close the panel, put the tool away, or open the pause menu |
 | <kbd>Space</kbd> | Pause |
 | <kbd>O</kbd> | Pollution overlay |
 | <kbd>P</kbd> | Peaceful mode |
@@ -108,14 +116,24 @@ in the directory you run it from. F9 loads the newest of the two.
 ```sh
 cargo test                              # unit tests
 cargo run --release --bin gen_assets    # repaint every sprite into assets/
+python3 tools/art/fields.py             # ore-field textures and pipe pieces
+python3 tools/art/diagonals.py          # the robot's 3/4 views
+python3 tools/art/logo.py               # logo and window icon
 ```
+
+The art scripts write into `assets/art/`; run `gen_assets` afterwards to pick
+them up. `COGWORKS_SCREENSHOT=out.png` renders a few seconds, saves a
+screenshot and quits. `COGWORKS_SCREEN` (`title`, `newgame`, `settings`,
+`pause`), `COGWORKS_PANEL`, `COGWORKS_DAY_PHASE` and `COGWORKS_FULLSCREEN=1`
+set up what the screenshot shows.
 
 | Path | What lives there |
 | --- | --- |
 | `src/world/` | Simulation: entities, logistics, production, power, fluids, combat, world generation |
 | `src/render/` | Camera, ground, entities, lighting, sky and particles |
-| `src/ui/` | HUD, panels, tooltips, minimap and shared widgets |
+| `src/ui/` | HUD, panels, menus, tooltips, minimap and shared widgets |
 | `src/bin/gen_assets/` | Procedural sprite painter that writes `assets/sprites/` |
+| `tools/art/` | Scripts that prepare painted art and paint the ore fields, pipes, robot views and logo |
 | `tools/music/` | Offline build tool for the music, ambience and sound effects ([README](tools/music/README.md)) |
 
 ## Assets and licences
