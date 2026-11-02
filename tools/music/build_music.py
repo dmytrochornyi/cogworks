@@ -561,9 +561,12 @@ TRACKS = [
     ),
 ]
 
+# The ambience beds are no longer cut from the packs: they're synthesised
+# environmental music, made by tools/music/environmental.py. This builder only
+# picks them up (they must exist) and lists them in the manifest.
 AMBIENCE = [
-    dict(name="day_birds", src="BirdSong.wav", night=False),
-    dict(name="night_fire", src="Studying By The Fire Ambiance .wav", night=True),
+    dict(name="day_garden", night=False),
+    dict(name="night_garden", night=True),
 ]
 
 SFX_SPEC = [
@@ -766,10 +769,11 @@ def build(packs_dir):
     ambience_meta = []
     for a in AMBIENCE:
         out = os.path.join(AMBIENCE_DIR, f"{a['name']}.ogg")
-        render_ambience(lookup[a["src"]], out)
+        if not os.path.exists(out):
+            sys.exit(f"missing {out}: run tools/music/environmental.py first")
         dur, _, _ = probe_meta(out)
         ambience_meta.append(dict(name=a["name"], secs=dur))
-        print(f"[ambience] {a['name']:14s} {dur:6.2f}s  src: {a['src']}")
+        print(f"[ambience] {a['name']:14s} {dur:6.2f}s  (tools/music/environmental.py)")
 
     # sfx
     sfx_files = []

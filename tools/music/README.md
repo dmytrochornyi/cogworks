@@ -38,8 +38,11 @@ The builder writes:
 - `assets/audio/music/*.ogg` — 4 tracks (2 Day, 2 Dusk), 100–140 s, seamlessly
   loopable, mastered to −16 LUFS ±1, true peak ≤ −1.0 dBTP, OGG Vorbis `-q:a 5`
   at 32 kHz stereo.
-- `assets/audio/ambience/*.ogg` — day birds / night fire beds, 30–60 s,
-  loop-seamless, −28 LUFS ±2.
+- `assets/audio/ambience/*.ogg` are **not** made from the packs any more. They
+  are synthesised environmental-music beds (`day_garden`, `night_garden`) made by
+  `uv run --with numpy python tools/music/environmental.py`: FM bells, mallets,
+  warm pads, water and crickets, loop-seamless (every tail wraps around),
+  −27 LUFS. Run it before this builder, which only lists them in the manifest.
 - `assets/audio/sfx/*.ogg` — foley variants (`place`, `pickup`, `craft`,
   `research`, `click`, `shot`), trimmed to the transient, 5 ms fade-in,
   20–60 ms fade-out, DC removed, peak −3 dBFS.

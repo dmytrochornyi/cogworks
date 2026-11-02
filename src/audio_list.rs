@@ -17,8 +17,8 @@ pub const MUSIC: &[Track] = &[
     Track { name: "dusk_embers", mood: Mood::Dusk, secs: 115.86225f32, bytes: include_bytes!("../assets/audio/music/dusk_embers.ogg") },
 ];
 
-pub const AMBIENCE_DAY: &[u8] = include_bytes!("../assets/audio/ambience/day_birds.ogg");
-pub const AMBIENCE_NIGHT: &[u8] = include_bytes!("../assets/audio/ambience/night_fire.ogg");
+pub const AMBIENCE_DAY: &[u8] = include_bytes!("../assets/audio/ambience/day_garden.ogg");
+pub const AMBIENCE_NIGHT: &[u8] = include_bytes!("../assets/audio/ambience/night_garden.ogg");
 
 pub const SFX: &[(&str, &[&[u8]])] = &[
     ("place", &[include_bytes!("../assets/audio/sfx/place_0.ogg"), include_bytes!("../assets/audio/sfx/place_1.ogg"), include_bytes!("../assets/audio/sfx/place_2.ogg")]),

@@ -51,7 +51,7 @@ embedded in a single executable.
 - **Power**: coal generators, solar panels and lamp-topped power poles
 - **Fluids**: wellheads, pipes, refineries and mixers for crude tar and naphtha
 - **Defence**: pollution wakes the hives; hold them off with walls and sentries, or play in peaceful mode
-- **Atmosphere**: a day-to-dusk cycle with real-time lighting, a lo-fi radio, ambience and foley
+- **Atmosphere**: a day-to-dusk cycle with real-time lighting, a lo-fi radio, foley, and gentle environmental ambience (soft bells, mallets, pads and water by day; crickets at night)
 - **Menus**: a title screen with Continue and New game (normal or peaceful), a pause menu, and settings for music, ambience, effects and fullscreen
 - **A hovering robot**: glides smoothly and turns to face all eight directions as it moves
 - **Quality of life**: quickbar binding, building copy (Q), icon tooltips, minimap, save/load and autosave
@@ -144,9 +144,11 @@ set up what the screenshot shows.
   commercial product, is not allowed without the author's permission.
 - **Font**: [M PLUS Rounded 1c](https://fonts.google.com/specimen/M+PLUS+Rounded+1c),
   SIL Open Font License 1.1. See [`assets/fonts/OFL.txt`](assets/fonts/OFL.txt).
-- **Music, ambience and sound effects** (`assets/audio/`): original arrangements
-  and edits built from the free sample packs by [Mondo Loops](https://mondoloops.com)
+- **Music and sound effects** (`assets/audio/music/`, `assets/audio/sfx/`): original
+  arrangements and edits built from the free sample packs by [Mondo Loops](https://mondoloops.com)
   (*Dreamy Lofi Hip Hop Samples Vol. 1* and *Organic Lofi Hip Hop Vol. 1*).
   These files are **not** covered by the PolyForm licence. Don't extract them for
   reuse as samples or register them with Content ID. The raw packs aren't
   included in this repository.
+- **Ambience** (`assets/audio/ambience/`): synthesised from scratch by
+  `tools/music/environmental.py`, with no samples, and covered by the PolyForm licence like the code.
