@@ -9,6 +9,14 @@ use crate::theme::{self, line, radius};
 use super::metrics::ui_mouse;
 use super::style::{BG2, EDGE, SHADE};
 
+// Logo plaque colours for windows, tooltips, toasts and banners.
+const PLAQUE_INK: u32 = 0x3a2418;
+const PLAQUE_COPPER: u32 = 0xc4742f;
+const PLAQUE_COPPER_HI: u32 = 0xf2b56a;
+const PLAQUE_COPPER_LO: u32 = 0x7e4320;
+/// Width of the copper band around a plaque's cream face.
+const PLAQUE_BAND: f32 = 7.0;
+
 const CORNERS: [f32; 4] = [PI, -FRAC_PI_2, 0.0, FRAC_PI_2];
 
 fn corner_centers(r: Rect, rad: f32) -> [Vec2; 4] {
@@ -145,6 +153,34 @@ pub(super) fn surface_alpha(r: Rect, elev: Elevation, alpha: f32) {
         rrect(Rect::new(r.x + 8.0, r.y + 10.0, r.w, r.h), rad, mix_a(SHADE, 0.14));
         // Hard wood under-edge, offset straight down so it reads as paper thickness.
         rrect(Rect::new(r.x, r.y + 3.0, r.w, r.h), rad, mix_a(theme::color(theme::TRIM_SHADOW), 1.0));
+    }
+    if elev != Elevation::Card {
+        // Riveted copper plaque, matching the logo: dark ink outline, a copper
+        // band lit along its top edge, then the cream face with corner rivets.
+        let ink = theme::color(PLAQUE_INK);
+        let band = PLAQUE_BAND;
+        rrect(r, rad, mix_a(ink, 1.0));
+        let b = Rect::new(r.x + 2.0, r.y + 2.0, r.w - 4.0, r.h - 4.0);
+        rrect(b, (rad - 2.0).max(0.0), mix_a(theme::color(PLAQUE_COPPER_LO), 1.0));
+        rrect(Rect::new(b.x, b.y, b.w, b.h - 2.0), (rad - 2.0).max(0.0), mix_a(theme::color(PLAQUE_COPPER), 1.0));
+        rrect(Rect::new(b.x + 3.0, b.y + 1.0, b.w - 6.0, 2.0), 1.0, mix_a(theme::color(PLAQUE_COPPER_HI), 0.8));
+        let face = Rect::new(r.x + band, r.y + band, r.w - 2.0 * band, r.h - 2.0 * band);
+        rrect(Rect::new(face.x - 1.5, face.y - 1.5, face.w + 3.0, face.h + 3.0), (rad - band + 1.5).max(0.0), mix_a(ink, 0.85));
+        rrect(face, (rad - band).max(0.0), mix_a(fill, 1.0));
+        if r.w >= 120.0 && r.h >= 48.0 {
+            let k = band * 0.5 + 1.0;
+            for c in [
+                vec2(r.x + k + 2.0, r.y + k + 2.0),
+                vec2(r.x + r.w - k - 2.0, r.y + k + 2.0),
+                vec2(r.x + k + 2.0, r.y + r.h - k - 2.0),
+                vec2(r.x + r.w - k - 2.0, r.y + r.h - k - 2.0),
+            ] {
+                circle(c, 2.6, mix_a(ink, 0.9));
+                circle(c - vec2(0.6, 0.6), 1.5, mix_a(theme::color(PLAQUE_COPPER_HI), 1.0));
+            }
+        }
+        let _ = (border, border_w);
+        return;
     }
     // Border as two filled rounded rects: an outer one in the border colour and
     // an inner one in the fill colour, inset by the border width. This gives a
