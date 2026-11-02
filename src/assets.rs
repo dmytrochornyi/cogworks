@@ -28,6 +28,8 @@ pub struct Assets {
     pub ore_field: Material,
     /// Keeps only the bright parts of the graded frame, for the bloom buffer.
     pub bright: Material,
+    /// Blurs the bright pass at quarter resolution.
+    pub bloom_blur: Material,
     /// The final screen pass: bloom, ink, halftone, grain, motion blur (see `render::post`).
     pub post: Material,
 }
@@ -153,13 +155,17 @@ impl Assets {
             MaterialParams { uniforms: vec![UniformDesc::new("Src", UniformType::Float2)], ..Default::default() },
         )
         .expect("bright-pass shader");
+        let bloom_blur = load_material(
+            ShaderSource::Glsl { vertex: VERTEX, fragment: BLOOM_BLUR },
+            MaterialParams { uniforms: vec![UniformDesc::new("Src", UniformType::Float2)], ..Default::default() },
+        )
+        .expect("bloom blur shader");
         let post = load_material(
             ShaderSource::Glsl { vertex: VERTEX, fragment: POST },
             MaterialParams {
                 uniforms: vec![
                     UniformDesc::new("Screen", UniformType::Float4),
-                    UniformDesc::new("LookA", UniformType::Float4),
-                    UniformDesc::new("LookB", UniformType::Float4),
+                    UniformDesc::new("Fx", UniformType::Float4),
                     UniformDesc::new("Blur", UniformType::Float4),
                     UniformDesc::new("Sun", UniformType::Float4),
                     UniformDesc::new("View", UniformType::Float4),
@@ -170,7 +176,7 @@ impl Assets {
         )
         .expect("post shader");
 
-        Assets { atlas, rects, font, font_bold, composite, additive, overlap, ore_field, bright, post }
+        Assets { atlas, rects, font, font_bold, composite, additive, overlap, ore_field, bright, bloom_blur, post }
     }
 
     pub fn rect(&self, name: &str) -> Rect {
@@ -487,12 +493,38 @@ void main() {
            + texture2D(Texture, uv + vec2( t.x,  t.y)).rgb;
     c *= 0.25;
     float l = dot(c, vec3(0.299, 0.587, 0.114));
-    gl_FragColor = vec4(c * smoothstep(0.70, 1.0, l), 1.0);
+    gl_FragColor = vec4(c * smoothstep(0.82, 1.08, l), 1.0);
+}
+"#;
+
+/// Blurs the quarter-size bright pass, so the full-screen post pass can read
+/// its soft bloom with a single tap. 13 bilinear taps cover about 9x9 texels.
+const BLOOM_BLUR: &str = r#"#version 100
+#ifdef GL_FRAGMENT_PRECISION_HIGH
+precision highp float;
+#else
+precision mediump float;
+#endif
+varying lowp vec2 uv;
+uniform sampler2D Texture;
+uniform vec2 Src; // bloom buffer size in pixels
+void main() {
+    vec2 t = 1.0 / Src;
+    vec3 c = texture2D(Texture, uv).rgb * 0.16;
+    c += (texture2D(Texture, uv + t * vec2( 1.5,  1.5)).rgb + texture2D(Texture, uv + t * vec2(-1.5,  1.5)).rgb
+        + texture2D(Texture, uv + t * vec2( 1.5, -1.5)).rgb + texture2D(Texture, uv + t * vec2(-1.5, -1.5)).rgb) * 0.11;
+    c += (texture2D(Texture, uv + t * vec2( 3.5,  0.0)).rgb + texture2D(Texture, uv + t * vec2(-3.5,  0.0)).rgb
+        + texture2D(Texture, uv + t * vec2( 0.0,  3.5)).rgb + texture2D(Texture, uv + t * vec2( 0.0, -3.5)).rgb) * 0.07;
+    c += (texture2D(Texture, uv + t * vec2( 3.0,  3.0)).rgb + texture2D(Texture, uv + t * vec2(-3.0,  3.0)).rgb
+        + texture2D(Texture, uv + t * vec2( 3.0, -3.0)).rgb + texture2D(Texture, uv + t * vec2(-3.0, -3.0)).rgb) * 0.04;
+    gl_FragColor = vec4(c, 1.0);
 }
 "#;
 
 /// Final screen pass (see `render::post`). The graded frame is stored upside
-/// down, so screen-space vectors arrive with y already flipped.
+/// down, so screen-space vectors arrive with y already flipped. Texture reads:
+/// one for the frame (six while the camera moves) and one for the bloom; the
+/// rest is arithmetic.
 const POST: &str = r#"#version 100
 #ifdef GL_FRAGMENT_PRECISION_HIGH
 precision highp float;
@@ -501,27 +533,34 @@ precision mediump float;
 #endif
 varying lowp vec2 uv;
 uniform sampler2D Texture; // graded frame
-uniform sampler2D Bloom;   // quarter-size bright pass
+uniform sampler2D Bloom;   // quarter-size, already blurred
 uniform vec4 Screen; // width, height, time, unused
-uniform vec4 LookA;  // ink, halftone, unused, chroma
-uniform vec4 LookB;  // bloom, unused, posterize, unused
+uniform vec4 Fx;     // bloom, vibrance, cloud shadows, unused
 uniform vec4 Blur;   // streak (uv), focus centre (uv)
 uniform vec4 Sun;    // shaft strength, sun x (-1 left .. 1 right), warmth, mood amount
-uniform vec4 View;   // camera top-left in world pixels (x, y), pixels per tile, unused
+uniform vec4 View;   // camera top-left in world pixels (x, y), pixels per tile, daylight
 
 float luma(vec3 c) { return dot(c, vec3(0.299, 0.587, 0.114)); }
-
-// Colour plates printed slightly out of register: red nudged one way, blue
-// the other, more toward the screen edges.
-vec3 plates(vec2 p) {
-    vec2 px = 1.0 / Screen.xy;
-    vec2 off = ((p - 0.5) * 0.0035 + vec2(0.8, 0.4) * px) * LookA.w;
-    return vec3(texture2D(Texture, p + off).r, texture2D(Texture, p).g, texture2D(Texture, p - off).b);
+float hash(vec2 p) {
+    p = fract(p * vec2(443.897, 441.423));
+    p += dot(p, p.yx + 19.19);
+    return fract((p.x + p.y) * p.x);
+}
+float vnoise(vec2 p) {
+    vec2 i = floor(p);
+    vec2 f = fract(p);
+    f = f * f * (3.0 - 2.0 * f);
+    return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x),
+               mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x), f.y);
 }
 
 void main() {
-    vec2 px = 1.0 / Screen.xy;
     vec2 frag = uv * Screen.xy;
+    vec2 sp = vec2(frag.x, Screen.y - frag.y);   // screen pixels, y down
+    vec2 wp = (sp + View.xy) / View.z;            // world tiles
+    float t = Screen.z;
+    float mood = Sun.w;
+    float day = View.w;
 
     // ---- camera motion blur, faded out around the robot so it stays crisp ----
     vec2 toFocus = (uv - Blur.zw) * Screen.xy;
@@ -530,68 +569,46 @@ void main() {
     vec3 col;
     if (dot(streak, streak) * Screen.x * Screen.x > 1.0) {
         col = vec3(0.0);
-        for (int i = 0; i < 8; i++) {
-            float k = (float(i) + 0.5) / 8.0 - 0.5;
-            col += plates(uv + streak * k);
+        for (int i = 0; i < 6; i++) {
+            col += texture2D(Texture, uv + streak * ((float(i) + 0.5) / 6.0 - 0.5)).rgb;
         }
-        col /= 8.0;
+        col /= 6.0;
     } else {
-        col = plates(uv);
+        col = texture2D(Texture, uv).rgb;
     }
 
-    // ---- ink: dark lines where luminance changes sharply (Sobel) ----
-    if (LookA.x > 0.0) {
-        float tl = luma(texture2D(Texture, uv + px * vec2(-1.0, -1.0)).rgb);
-        float tc = luma(texture2D(Texture, uv + px * vec2( 0.0, -1.0)).rgb);
-        float tr = luma(texture2D(Texture, uv + px * vec2( 1.0, -1.0)).rgb);
-        float ml = luma(texture2D(Texture, uv + px * vec2(-1.0,  0.0)).rgb);
-        float mr = luma(texture2D(Texture, uv + px * vec2( 1.0,  0.0)).rgb);
-        float bl = luma(texture2D(Texture, uv + px * vec2(-1.0,  1.0)).rgb);
-        float bc = luma(texture2D(Texture, uv + px * vec2( 0.0,  1.0)).rgb);
-        float br = luma(texture2D(Texture, uv + px * vec2( 1.0,  1.0)).rgb);
-        float gx = (tr + 2.0 * mr + br) - (tl + 2.0 * ml + bl);
-        float gy = (bl + 2.0 * bc + br) - (tl + 2.0 * tc + tr);
-        float edge = smoothstep(0.32, 0.75, length(vec2(gx, gy)));
-        col = mix(col, col * vec3(0.30, 0.20, 0.24), edge * LookA.x * 0.75);
+    // ---- vibrance: lush greens and skies, vivid colours left alone ----
+    float l = luma(col);
+    if (Fx.y > 0.0) {
+        float sat = max(col.r, max(col.g, col.b)) - min(col.r, min(col.g, col.b));
+        col = mix(vec3(l), col, 1.0 + Fx.y * 0.3 * (1.0 - sat));
     }
 
-    // ---- posterize toward a few printed tones ----
-    if (LookB.z > 0.0) {
-        vec3 q = floor(col * 6.0 + 0.5) / 6.0;
-        col = mix(col, q, LookB.z);
+    // ---- big soft cloud shadows drifting over the meadows by day ----
+    float cloudy = Fx.z * day;
+    if (cloudy > 0.0) {
+        vec2 cp = (wp - vec2(0.35, -0.12) * t) / 16.0;
+        float n = vnoise(cp) * 0.65 + vnoise(cp * 2.3 + 7.1) * 0.35;
+        float sh = smoothstep(0.55, 0.75, n) * cloudy;
+        col *= mix(vec3(1.0), vec3(0.80, 0.86, 0.96), sh * 0.75);
     }
 
-    // ---- cinematic grade: more contrast, golden highlights, warm brown shadows ----
-    float mood = Sun.w;
+    // ---- grade: soft contrast; airy cool shadows by day, warm brown ones and
+    // golden highlights as the sun goes down ----
     if (mood > 0.0) {
-        float w = Sun.z * mood;
+        float w = clamp(Sun.z, 0.0, 1.0);
         vec3 s = clamp(col, 0.0, 1.0);
-        col = mix(col, s * s * (3.0 - 2.0 * s), 0.28 * mood);
-        float l = luma(col);
-        col *= mix(vec3(1.0), vec3(1.06, 0.93, 0.82), w * smoothstep(0.25, 0.9, l));
-        col = mix(col, col * vec3(0.80, 0.66, 0.62), w * (1.0 - smoothstep(0.05, 0.55, l)));
+        col = mix(col, s * s * (3.0 - 2.0 * s), 0.18 * mood);
+        l = luma(col);
+        vec3 shadowTone = mix(vec3(0.90, 0.95, 1.06), vec3(0.80, 0.66, 0.62), w);
+        vec3 lightTone = mix(vec3(1.04, 1.02, 0.96), vec3(1.06, 0.93, 0.82), w);
+        col *= mix(vec3(1.0), lightTone, mood * smoothstep(0.25, 0.9, l));
+        col = mix(col, col * shadowTone, mood * (0.45 + 0.55 * w) * (1.0 - smoothstep(0.05, 0.55, l)));
     }
 
-    // ---- halftone dots in the shadows, on a 45-degree screen ----
-    if (LookA.y > 0.0) {
-        float cell = max(4.0, Screen.y / 190.0);
-        vec2 r = mat2(0.7071, -0.7071, 0.7071, 0.7071) * frag / cell;
-        float d = length(fract(r) - 0.5);
-        float dark = 1.0 - luma(col);
-        float rad = sqrt(clamp((dark - 0.42) * 1.6, 0.0, 1.0)) * 0.56;
-        float dotm = 1.0 - smoothstep(rad - 0.07, rad + 0.07, d);
-        col = mix(col, col * vec3(0.58, 0.52, 0.80), dotm * LookA.y);
-    }
-
-    // ---- bloom: a soft glow around bright things, screened on top ----
-    if (LookB.x > 0.0) {
-        vec2 bt = px * 4.0;
-        vec3 b = texture2D(Bloom, uv).rgb * 0.20;
-        b += (texture2D(Bloom, uv + bt * vec2( 2.0,  0.0)).rgb + texture2D(Bloom, uv + bt * vec2(-2.0,  0.0)).rgb
-            + texture2D(Bloom, uv + bt * vec2( 0.0,  2.0)).rgb + texture2D(Bloom, uv + bt * vec2( 0.0, -2.0)).rgb) * 0.12;
-        b += (texture2D(Bloom, uv + bt * vec2( 3.0,  3.0)).rgb + texture2D(Bloom, uv + bt * vec2(-3.0,  3.0)).rgb
-            + texture2D(Bloom, uv + bt * vec2( 3.0, -3.0)).rgb + texture2D(Bloom, uv + bt * vec2(-3.0, -3.0)).rgb) * 0.08;
-        b *= vec3(1.0, 0.9, 0.75) * LookB.x;
+    // ---- bloom: a gentle halation around bright things, screened on top ----
+    if (Fx.x > 0.0) {
+        vec3 b = texture2D(Bloom, uv).rgb * vec3(1.0, 0.92, 0.80) * Fx.x;
         col = 1.0 - (1.0 - col) * (1.0 - clamp(b, 0.0, 1.0));
     }
 
@@ -599,29 +616,28 @@ void main() {
     // anchored to the world so they stay put as the camera moves ----
     float sun = Sun.x * mood;
     if (sun > 0.0) {
-        vec2 sp = vec2(frag.x, Screen.y - frag.y);         // screen pixels, y down
-        vec2 corner = vec2(0.5 + 0.55 * Sun.y, -0.15);      // where the sun sits
+        vec2 corner = vec2(0.5 + 0.55 * Sun.y, -0.15);
         vec2 q = (sp / Screen.xy - corner) * vec2(Screen.x / Screen.y, 1.0);
         float near = clamp(1.0 - length(q) * 0.85, 0.0, 1.0);
-        vec3 sunCol = vec3(1.0, 0.72, 0.38);
-        col = 1.0 - (1.0 - col) * (1.0 - sunCol * near * near * 0.22 * sun);
+        col = 1.0 - (1.0 - col) * (1.0 - vec3(1.0, 0.72, 0.38) * near * near * 0.22 * sun);
 
-        vec2 dir = normalize(vec2(-0.65 * Sun.y, 1.0));     // shafts fall away from the sun
-        vec2 perp = vec2(dir.y, -dir.x);
-        vec2 wp = (sp + View.xy) / View.z;                   // world tiles
-        float s = dot(wp, perp) / 1.7;
-        float t = Screen.z;
+        vec2 dir = normalize(vec2(-0.65 * Sun.y, 1.0));
+        float s = dot(wp, vec2(dir.y, -dir.x)) / 1.7;
         float b = (0.5 + 0.5 * sin(s * 1.00 + t * 0.07))
                 * (0.5 + 0.5 * sin(s * 2.31 + 1.7 - t * 0.11))
                 * (0.5 + 0.5 * sin(s * 0.47 + 4.2 + t * 0.05));
         b = smoothstep(0.14, 0.34, b);
         // Out of the beams the land sits in warm shade; inside, it is sunlit.
-        vec3 shade = vec3(0.70, 0.62, 0.64);
-        vec3 lit = vec3(1.15, 0.97, 0.82);
-        col *= mix(vec3(1.0), mix(shade, lit, b), sun * 0.75);
-        float fade = 0.3 + 0.7 * near;
-        vec3 shaft = vec3(1.0, 0.70, 0.40) * b * fade * 0.16 * sun;
+        col *= mix(vec3(1.0), mix(vec3(0.70, 0.62, 0.64), vec3(1.15, 0.97, 0.82), b), sun * 0.75);
+        vec3 shaft = vec3(1.0, 0.70, 0.40) * b * (0.3 + 0.7 * near) * 0.16 * sun;
         col = 1.0 - (1.0 - col) * (1.0 - shaft);
+    }
+
+    // ---- aerial haze: the top of the view fades toward the sky colour ----
+    if (mood > 0.0) {
+        float top = 1.0 - sp.y / Screen.y;
+        vec3 sky = mix(vec3(0.86, 0.93, 1.0), vec3(1.0, 0.84, 0.62), clamp(Sun.z, 0.0, 1.0));
+        col = mix(col, sky, top * top * 0.12 * mood * day);
     }
 
     gl_FragColor = vec4(clamp(col, 0.0, 1.0), 1.0);
