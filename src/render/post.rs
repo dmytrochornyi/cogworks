@@ -1,15 +1,16 @@
 //! Screen-space post-processing: the last pass that turns the lit world into
-//! a painted frame. Soft bloom and paper grain give it a hand-painted
+//! a painted frame. Soft bloom and gentle ink give it a hand-painted
 //! storybook feel; ink outlines, halftone shading and slightly misregistered
-//! colour plates give it a printed-comic one; film grain and camera motion
-//! blur tie it together. `Look` picks how strongly each effect applies.
+//! colour plates give it a printed-comic one; camera motion blur ties it
+//! together. There is deliberately no grain or paper noise: the image stays
+//! clean. `Look` picks how strongly each effect applies.
 
 use macroquad::prelude::*;
 
 /// A preset for the post-processing pass, cycled with the V key.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
 pub enum Look {
-    /// Painted picture-book: soft bloom, paper texture, gentle ink and grain.
+    /// Painted picture-book: soft bloom and gentle ink.
     #[default]
     Storybook,
     /// Printed comic: bold ink lines, halftone shadows, offset colour plates.
@@ -23,11 +24,9 @@ pub enum Look {
 pub struct LookParams {
     pub ink: f32,
     pub halftone: f32,
-    pub grain: f32,
     /// Colour-plate misregistration (red and blue nudged apart).
     pub chroma: f32,
     pub bloom: f32,
-    pub paper: f32,
     /// Flattens colours toward a few printed tones.
     pub posterize: f32,
     /// Camera motion blur, as a fraction of a frame's travel.
@@ -60,30 +59,24 @@ impl Look {
             Look::Storybook => LookParams {
                 ink: 0.45,
                 halftone: 0.22,
-                grain: 0.55,
                 chroma: 0.25,
                 bloom: 0.6,
-                paper: 1.0,
                 posterize: 0.0,
                 motion: 1.0,
             },
             Look::Comic => LookParams {
                 ink: 1.0,
                 halftone: 0.9,
-                grain: 0.7,
                 chroma: 1.0,
                 bloom: 0.4,
-                paper: 0.7,
                 posterize: 0.3,
                 motion: 1.0,
             },
             Look::Clean => LookParams {
                 ink: 0.0,
                 halftone: 0.0,
-                grain: 0.0,
                 chroma: 0.0,
                 bloom: 0.0,
-                paper: 0.0,
                 posterize: 0.0,
                 motion: 0.0,
             },
@@ -128,8 +121,8 @@ mod tests {
     fn clean_look_turns_everything_off() {
         let p = Look::Clean.params();
         assert_eq!(
-            [p.ink, p.halftone, p.grain, p.chroma, p.bloom, p.paper, p.posterize, p.motion],
-            [0.0; 8]
+            [p.ink, p.halftone, p.chroma, p.bloom, p.posterize, p.motion],
+            [0.0; 6]
         );
     }
 

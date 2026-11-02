@@ -326,8 +326,8 @@ impl Renderer {
         let focus = cam.w2s(player - vec2(0.0, 0.3));
         a.post.set_texture("Bloom", bloom_rt.texture.clone());
         a.post.set_uniform("Screen", vec4(w, h, t, 0.0));
-        a.post.set_uniform("LookA", vec4(p.ink, p.halftone, p.grain, p.chroma));
-        a.post.set_uniform("LookB", vec4(p.bloom, p.paper, p.posterize, 0.0));
+        a.post.set_uniform("LookA", vec4(p.ink, p.halftone, 0.0, p.chroma));
+        a.post.set_uniform("LookB", vec4(p.bloom, 0.0, p.posterize, 0.0));
         a.post.set_uniform("Blur", vec4(self.streak.x / w, -self.streak.y / h, focus.x / w, 1.0 - focus.y / h));
         gl_use_material(&a.post);
         draw_texture_ex(&graded_rt.texture, 0.0, 0.0, WHITE, DrawTextureParams {

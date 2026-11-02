@@ -459,23 +459,10 @@ varying lowp vec2 uv;
 uniform sampler2D Texture; // graded frame
 uniform sampler2D Bloom;   // quarter-size bright pass
 uniform vec4 Screen; // width, height, time, unused
-uniform vec4 LookA;  // ink, halftone, grain, chroma
-uniform vec4 LookB;  // bloom, paper, posterize, unused
+uniform vec4 LookA;  // ink, halftone, unused, chroma
+uniform vec4 LookB;  // bloom, unused, posterize, unused
 uniform vec4 Blur;   // streak (uv), focus centre (uv)
 
-float hash(vec2 p) {
-    p = fract(p * vec2(443.897, 441.423));
-    p += dot(p, p.yx + 19.19);
-    return fract((p.x + p.y) * p.x);
-}
-float vnoise(vec2 p) {
-    vec2 i = floor(p);
-    vec2 f = fract(p);
-    f = f * f * (3.0 - 2.0 * f);
-    float a = hash(i), b = hash(i + vec2(1.0, 0.0));
-    float c = hash(i + vec2(0.0, 1.0)), d = hash(i + vec2(1.0, 1.0));
-    return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
-}
 float luma(vec3 c) { return dot(c, vec3(0.299, 0.587, 0.114)); }
 
 // Colour plates printed slightly out of register: red nudged one way, blue
@@ -549,20 +536,6 @@ void main() {
             + texture2D(Bloom, uv + bt * vec2( 3.0, -3.0)).rgb + texture2D(Bloom, uv + bt * vec2(-3.0, -3.0)).rgb) * 0.08;
         b *= vec3(1.0, 0.9, 0.75) * LookB.x;
         col = 1.0 - (1.0 - col) * (1.0 - clamp(b, 0.0, 1.0));
-    }
-
-    // ---- paper: a still, fibrous texture, as if painted on watercolour paper ----
-    if (LookB.y > 0.0) {
-        float n = vnoise(frag / 2.5) * 0.45 + vnoise(frag / 11.0) * 0.35 + vnoise(frag / 60.0) * 0.20;
-        col *= 1.0 + (n - 0.5) * 0.09 * LookB.y;
-    }
-
-    // ---- film grain, re-rolled 24 times a second, strongest in the midtones ----
-    if (LookA.z > 0.0) {
-        float f = floor(Screen.z * 24.0);
-        float g = hash(frag + vec2(f * 17.13, f * 7.31)) + hash(frag * 1.37 + vec2(f * 3.7, f * 11.9)) - 1.0;
-        float l = luma(col);
-        col += g * (0.05 + 0.10 * l * (1.0 - l)) * LookA.z;
     }
 
     gl_FragColor = vec4(clamp(col, 0.0, 1.0), 1.0);

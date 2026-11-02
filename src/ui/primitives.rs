@@ -9,43 +9,6 @@ use crate::theme::{self, line, radius};
 use super::metrics::ui_mouse;
 use super::style::{BG2, EDGE, SHADE};
 
-thread_local! {
-    /// The atlas and source rect of the parchment texture, set each frame by
-    /// `ui::draw` so plain drawing helpers can texture panel faces.
-    static PAPER: std::cell::RefCell<Option<(Texture2D, Rect)>> = const { std::cell::RefCell::new(None) };
-}
-
-pub(super) fn set_paper(atlas: Texture2D, src: Rect) {
-    PAPER.with(|p| *p.borrow_mut() = Some((atlas, src)));
-}
-
-/// Tiles the parchment texture over `r` at a low opacity, giving cream faces
-/// a soft paper grain. Edge tiles are cropped, not squashed.
-fn paper_grain(r: Rect, alpha: f32) {
-    PAPER.with(|p| {
-        let Some((tex, src)) = p.borrow().clone() else {
-            return;
-        };
-        let tile = 160.0;
-        let mut y = r.y;
-        while y < r.bottom() - 0.5 {
-            let h = (r.bottom() - y).min(tile);
-            let mut x = r.x;
-            while x < r.right() - 0.5 {
-                let w = (r.right() - x).min(tile);
-                let s = Rect::new(src.x, src.y, src.w * w / tile, src.h * h / tile);
-                draw_texture_ex(&tex, x, y, Color::new(1.0, 1.0, 1.0, alpha), DrawTextureParams {
-                    dest_size: Some(vec2(w, h)),
-                    source: Some(s),
-                    ..Default::default()
-                });
-                x += tile;
-            }
-            y += tile;
-        }
-    });
-}
-
 // Logo plaque colours for windows, tooltips, toasts and banners.
 const PLAQUE_INK: u32 = 0x3a2418;
 const PLAQUE_COPPER: u32 = 0xc4742f;
@@ -204,8 +167,6 @@ pub(super) fn surface_alpha(r: Rect, elev: Elevation, alpha: f32) {
         let face = Rect::new(r.x + band, r.y + band, r.w - 2.0 * band, r.h - 2.0 * band);
         rrect(Rect::new(face.x - 1.5, face.y - 1.5, face.w + 3.0, face.h + 3.0), (rad - band + 1.5).max(0.0), mix_a(ink, 0.85));
         rrect(face, (rad - band).max(0.0), mix_a(fill, 1.0));
-        let inset = ((rad - band) * 0.35).max(1.0);
-        paper_grain(Rect::new(face.x + inset, face.y + inset, face.w - 2.0 * inset, face.h - 2.0 * inset), 0.13 * alpha);
         if r.w >= 120.0 && r.h >= 48.0 {
             let k = band * 0.5 + 1.0;
             for c in [
