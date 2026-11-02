@@ -617,7 +617,7 @@ void main() {
         b = smoothstep(0.14, 0.34, b);
         // Out of the beams the land sits in warm shade; inside, it is sunlit.
         vec3 shade = vec3(0.70, 0.62, 0.64);
-        vec3 lit = vec3(1.14, 1.0, 0.86);
+        vec3 lit = vec3(1.15, 0.97, 0.82);
         col *= mix(vec3(1.0), mix(shade, lit, b), sun * 0.75);
         float fade = 0.3 + 0.7 * near;
         vec3 shaft = vec3(1.0, 0.70, 0.40) * b * fade * 0.16 * sun;
