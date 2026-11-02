@@ -103,8 +103,10 @@ def main():
     def resized(a, rows_px):
         return np.asarray(Image.fromarray(a).resize((TILE, rows_px), Image.LANCZOS))
 
+    # Both rails use the top one (the bottom is its mirror image) so the belt
+    # has no painted light direction and reads the same at every rotation.
     top_px = max(4, round(top_rail_end * scale))
-    bot_px = max(4, round((h - bot_rail_start) * scale))
+    bot_px = top_px
     surf_px = (BOTTOM - TOP) - top_px - bot_px
     surf = resized(surf, surf_px)
     # Lift the ridges so the belt's motion reads at a glance: stretch contrast
@@ -115,7 +117,7 @@ def main():
     surf[..., :3] *= np.clip(gain, 0.55, 1.6)[None, :, None]
     surf = np.clip(surf, 0, 255).astype(np.uint8)
     top = resized(top, top_px)
-    bot = resized(bot, bot_px)
+    bot = np.flipud(top).copy()
 
     def straight(frame):
         out = np.zeros((TILE, TILE, 4), np.uint8)
