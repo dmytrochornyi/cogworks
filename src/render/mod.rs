@@ -140,6 +140,8 @@ fn lantern_seed(pos: Vec2) -> f32 {
 pub struct Renderer {
     world_rt: Option<RenderTarget>,
     light_rt: Option<RenderTarget>,
+    /// Where light pools overlap; see `OVERLAP` in assets.rs.
+    overlap_rt: Option<RenderTarget>,
     /// The lit, colour-graded world before the post pass.
     graded_rt: Option<RenderTarget>,
     /// Quarter-size bright pass of `graded_rt`, blurred into bloom.
@@ -161,7 +163,7 @@ pub struct Renderer {
 
 impl Renderer {
     pub fn new() -> Self {
-        Renderer { world_rt: None, light_rt: None, graded_rt: None, bloom_rt: None, rt_size: (0, 0), prev_view: None, streak: Vec2::ZERO, particles: Vec::new(), rng: 0x1234_5678, bird_timer: 6.0, player_foot_pairs: 0, juice: Juice::default() }
+        Renderer { world_rt: None, light_rt: None, overlap_rt: None, graded_rt: None, bloom_rt: None, rt_size: (0, 0), prev_view: None, streak: Vec2::ZERO, particles: Vec::new(), rng: 0x1234_5678, bird_timer: 6.0, player_foot_pairs: 0, juice: Juice::default() }
     }
 
     fn ensure_targets(&mut self) {
@@ -174,6 +176,7 @@ impl Renderer {
             };
             self.world_rt = Some(make(size.0, size.1));
             self.light_rt = Some(make(size.0, size.1));
+            self.overlap_rt = Some(make(size.0, size.1));
             self.graded_rt = Some(make(size.0, size.1));
             self.bloom_rt = Some(make((size.0 / 4).max(1), (size.1 / 4).max(1)));
             self.rt_size = size;
@@ -268,6 +271,16 @@ impl Renderer {
         }
         gl_use_default_material();
 
+        // The same lights again, this time recording where pools overlap.
+        let overlap_rt = self.overlap_rt.clone().unwrap();
+        let mut overlap_cam = Camera2D::from_display_rect(Rect::new(0.0, 0.0, w, h));
+        overlap_cam.render_target = Some(overlap_rt.clone());
+        set_camera(&overlap_cam);
+        clear_background(Color::new(0.0, 0.0, 0.0, 1.0));
+        gl_use_material(&a.overlap);
+        draw_lights(a, world, cam, t, sky.glow);
+        gl_use_default_material();
+
         // Composite into the graded buffer with the same flip as drawing to
         // the screen, so it ends up stored like the world buffer.
         let graded_rt = self.graded_rt.clone().unwrap();
@@ -275,6 +288,7 @@ impl Renderer {
         graded_cam.render_target = Some(graded_rt.clone());
         set_camera(&graded_cam);
         a.composite.set_texture("Light", light_rt.texture.clone());
+        a.composite.set_texture("Overlap", overlap_rt.texture.clone());
         a.composite.set_uniform("Params", vec4(0.0, 0.0, 0.55, 0.35));
         a.composite.set_uniform("Tint", vec4(sky.tint.r, sky.tint.g, sky.tint.b, sky.tint.a));
         a.composite.set_uniform("Ambient", vec4(amb.r, amb.g, amb.b, 0.0));
@@ -289,11 +303,11 @@ impl Renderer {
             ..Default::default()
         });
         gl_use_default_material();
-        self.post(a, cam, world.player.draw_pos, t, look);
+        self.post(a, cam, world.player.draw_pos, t, look, &sky);
     }
 
     /// Bright pass into the bloom buffer, then the final post pass to the screen.
-    fn post(&mut self, a: &Assets, cam: &Cam, player: Vec2, t: f32, look: Look) {
+    fn post(&mut self, a: &Assets, cam: &Cam, player: Vec2, t: f32, look: Look, sky: &Sky) {
         let (w, h) = (self.rt_size.0 as f32, self.rt_size.1 as f32);
         let p = look.params();
         let graded_rt = self.graded_rt.clone().unwrap();
@@ -329,6 +343,9 @@ impl Renderer {
         a.post.set_uniform("LookA", vec4(p.ink, p.halftone, 0.0, p.chroma));
         a.post.set_uniform("LookB", vec4(p.bloom, 0.0, p.posterize, 0.0));
         a.post.set_uniform("Blur", vec4(self.streak.x / w, -self.streak.y / h, focus.x / w, 1.0 - focus.y / h));
+        a.post.set_uniform("Sun", vec4(sky.sun, sky.sun_x, sky.warmth, p.mood));
+        let top_left = cam.pos * cam.zoom - vec2(w, h) * 0.5;
+        a.post.set_uniform("View", vec4(top_left.x, top_left.y, cam.zoom, 0.0));
         gl_use_material(&a.post);
         draw_texture_ex(&graded_rt.texture, 0.0, 0.0, WHITE, DrawTextureParams {
             dest_size: Some(vec2(screen_width(), screen_height())),

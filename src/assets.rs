@@ -21,6 +21,8 @@ pub struct Assets {
     pub composite: Material,
     /// Plain textured drawing with additive blending, for lights.
     pub additive: Material,
+    /// Records where light pools overlap (see `OVERLAP`).
+    pub overlap: Material,
     /// Ore fields: cuts each tile's edge from which neighbours are the same ore,
     /// so a deposit reads as one continuous patch (see `ORE_FIELD`).
     pub ore_field: Material,
@@ -91,7 +93,7 @@ impl Assets {
                     UniformDesc::new("Ambient", UniformType::Float4),
                     UniformDesc::new("Screen", UniformType::Float2),
                 ],
-                textures: vec!["Light".to_string()],
+                textures: vec!["Light".to_string(), "Overlap".to_string()],
                 ..Default::default()
             },
         )
@@ -111,6 +113,24 @@ impl Assets {
             },
         )
         .expect("additive shader");
+        // Red adds up each light's reach; alpha multiplies (1 - reach), so the
+        // composite can tell two pools meeting from one bright pool.
+        let overlap = load_material(
+            ShaderSource::Glsl { vertex: VERTEX, fragment: OVERLAP },
+            MaterialParams {
+                pipeline_params: PipelineParams {
+                    color_blend: Some(BlendState::new(Equation::Add, BlendFactor::One, BlendFactor::One)),
+                    alpha_blend: Some(BlendState::new(
+                        Equation::Add,
+                        BlendFactor::Zero,
+                        BlendFactor::Value(BlendValue::SourceAlpha),
+                    )),
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+        )
+        .expect("overlap shader");
 
         let ore_field = load_material(
             ShaderSource::Glsl { vertex: VERTEX_EXTRA, fragment: ORE_FIELD },
@@ -141,6 +161,8 @@ impl Assets {
                     UniformDesc::new("LookA", UniformType::Float4),
                     UniformDesc::new("LookB", UniformType::Float4),
                     UniformDesc::new("Blur", UniformType::Float4),
+                    UniformDesc::new("Sun", UniformType::Float4),
+                    UniformDesc::new("View", UniformType::Float4),
                 ],
                 textures: vec!["Bloom".to_string()],
                 ..Default::default()
@@ -148,7 +170,7 @@ impl Assets {
         )
         .expect("post shader");
 
-        Assets { atlas, rects, font, font_bold, composite, additive, ore_field, bright, post }
+        Assets { atlas, rects, font, font_bold, composite, additive, overlap, ore_field, bright, post }
     }
 
     pub fn rect(&self, name: &str) -> Rect {
@@ -370,6 +392,21 @@ void main() {
 }
 "#;
 
+/// One light's reach `f` (glow falloff times strength): red gets `f` added,
+/// alpha gets multiplied by `1 - f`. After all lights, `alpha - 1 + red` is the
+/// sum of pairwise products of reaches: zero under a single light, growing
+/// where pools overlap.
+const OVERLAP: &str = r#"#version 100
+precision mediump float;
+varying lowp vec2 uv;
+varying lowp vec4 color;
+uniform sampler2D Texture;
+void main() {
+    float f = texture2D(Texture, uv).a * color.a;
+    gl_FragColor = vec4(f, 0.0, 0.0, 1.0 - f);
+}
+"#;
+
 const TEXTURED: &str = r#"#version 100
 precision mediump float;
 varying lowp vec2 uv;
@@ -394,6 +431,7 @@ precision mediump float;
 varying lowp vec2 uv;
 uniform sampler2D Texture;
 uniform sampler2D Light;
+uniform sampler2D Overlap; // r: summed reach, a: product of (1 - reach)
 uniform vec4 Params;   // unused, unused, vignette, warmth
 uniform vec4 Tint;     // mood tint: rgb colour, a strength
 uniform vec4 Ambient;  // ambient light (rgb), a unused — see render::sky::composite_rgb
@@ -410,6 +448,12 @@ void main() {
     float strength = Tint.a * (1.0 - lamp_share);
     col = mix(col, col * Tint.rgb * 1.6 + Tint.rgb * 0.08, strength);
     col += max(full - Ambient.rgb, 0.0) * 0.30;
+    // ---- where light pools meet: no white glare, a deeper rose-amber glow ----
+    vec4 o = texture2D(Overlap, uv);
+    float ov = clamp((o.a - 1.0 + o.r) * 2.5, 0.0, 1.0);
+    float ol = dot(col, vec3(0.299, 0.587, 0.114));
+    vec3 rose = ol * vec3(1.32, 0.80, 0.52) * 0.95;
+    col = mix(col, rose, ov * 0.6);
     // ---- unchanged grade: highlight roll-off, warm grade, vignette ----
     // Soft highlight roll-off so bright lamps bloom into cream instead of clipping.
     col = col / (1.0 + max(col - 0.85, 0.0) * 0.8);
@@ -462,6 +506,8 @@ uniform vec4 Screen; // width, height, time, unused
 uniform vec4 LookA;  // ink, halftone, unused, chroma
 uniform vec4 LookB;  // bloom, unused, posterize, unused
 uniform vec4 Blur;   // streak (uv), focus centre (uv)
+uniform vec4 Sun;    // shaft strength, sun x (-1 left .. 1 right), warmth, mood amount
+uniform vec4 View;   // camera top-left in world pixels (x, y), pixels per tile, unused
 
 float luma(vec3 c) { return dot(c, vec3(0.299, 0.587, 0.114)); }
 
@@ -515,6 +561,17 @@ void main() {
         col = mix(col, q, LookB.z);
     }
 
+    // ---- cinematic grade: more contrast, golden highlights, warm brown shadows ----
+    float mood = Sun.w;
+    if (mood > 0.0) {
+        float w = Sun.z * mood;
+        vec3 s = clamp(col, 0.0, 1.0);
+        col = mix(col, s * s * (3.0 - 2.0 * s), 0.28 * mood);
+        float l = luma(col);
+        col *= mix(vec3(1.0), vec3(1.06, 0.93, 0.82), w * smoothstep(0.25, 0.9, l));
+        col = mix(col, col * vec3(0.80, 0.66, 0.62), w * (1.0 - smoothstep(0.05, 0.55, l)));
+    }
+
     // ---- halftone dots in the shadows, on a 45-degree screen ----
     if (LookA.y > 0.0) {
         float cell = max(4.0, Screen.y / 190.0);
@@ -536,6 +593,35 @@ void main() {
             + texture2D(Bloom, uv + bt * vec2( 3.0, -3.0)).rgb + texture2D(Bloom, uv + bt * vec2(-3.0, -3.0)).rgb) * 0.08;
         b *= vec3(1.0, 0.9, 0.75) * LookB.x;
         col = 1.0 - (1.0 - col) * (1.0 - clamp(b, 0.0, 1.0));
+    }
+
+    // ---- sun: warm haze from the sun's corner and slanting shafts of light,
+    // anchored to the world so they stay put as the camera moves ----
+    float sun = Sun.x * mood;
+    if (sun > 0.0) {
+        vec2 sp = vec2(frag.x, Screen.y - frag.y);         // screen pixels, y down
+        vec2 corner = vec2(0.5 + 0.55 * Sun.y, -0.15);      // where the sun sits
+        vec2 q = (sp / Screen.xy - corner) * vec2(Screen.x / Screen.y, 1.0);
+        float near = clamp(1.0 - length(q) * 0.85, 0.0, 1.0);
+        vec3 sunCol = vec3(1.0, 0.72, 0.38);
+        col = 1.0 - (1.0 - col) * (1.0 - sunCol * near * near * 0.22 * sun);
+
+        vec2 dir = normalize(vec2(-0.65 * Sun.y, 1.0));     // shafts fall away from the sun
+        vec2 perp = vec2(dir.y, -dir.x);
+        vec2 wp = (sp + View.xy) / View.z;                   // world tiles
+        float s = dot(wp, perp) / 1.7;
+        float t = Screen.z;
+        float b = (0.5 + 0.5 * sin(s * 1.00 + t * 0.07))
+                * (0.5 + 0.5 * sin(s * 2.31 + 1.7 - t * 0.11))
+                * (0.5 + 0.5 * sin(s * 0.47 + 4.2 + t * 0.05));
+        b = smoothstep(0.14, 0.34, b);
+        // Out of the beams the land sits in warm shade; inside, it is sunlit.
+        vec3 shade = vec3(0.70, 0.62, 0.64);
+        vec3 lit = vec3(1.14, 1.0, 0.86);
+        col *= mix(vec3(1.0), mix(shade, lit, b), sun * 0.75);
+        float fade = 0.3 + 0.7 * near;
+        vec3 shaft = vec3(1.0, 0.70, 0.40) * b * fade * 0.16 * sun;
+        col = 1.0 - (1.0 - col) * (1.0 - shaft);
     }
 
     gl_FragColor = vec4(clamp(col, 0.0, 1.0), 1.0);

@@ -31,6 +31,8 @@ pub struct LookParams {
     pub posterize: f32,
     /// Camera motion blur, as a fraction of a frame's travel.
     pub motion: f32,
+    /// Cinematic grade and sun shafts (scaled by the time of day).
+    pub mood: f32,
 }
 
 impl Look {
@@ -63,6 +65,7 @@ impl Look {
                 bloom: 0.6,
                 posterize: 0.0,
                 motion: 1.0,
+                mood: 1.0,
             },
             Look::Comic => LookParams {
                 ink: 1.0,
@@ -71,6 +74,7 @@ impl Look {
                 bloom: 0.4,
                 posterize: 0.3,
                 motion: 1.0,
+                mood: 0.8,
             },
             Look::Clean => LookParams {
                 ink: 0.0,
@@ -79,6 +83,7 @@ impl Look {
                 bloom: 0.0,
                 posterize: 0.0,
                 motion: 0.0,
+                mood: 0.0,
             },
         }
     }
@@ -121,8 +126,8 @@ mod tests {
     fn clean_look_turns_everything_off() {
         let p = Look::Clean.params();
         assert_eq!(
-            [p.ink, p.halftone, p.chroma, p.bloom, p.posterize, p.motion],
-            [0.0; 6]
+            [p.ink, p.halftone, p.chroma, p.bloom, p.posterize, p.motion, p.mood],
+            [0.0; 7]
         );
     }
 
