@@ -1580,65 +1580,94 @@ pub fn icon(name: &str) -> Canvas {
 // ---------------------------------------------------------------- cursors
 
 /// Outline width for the cozy cursor sprites, in native pixels.
-const OW_CURSOR: f32 = 3.0;
+const OW_CURSOR: f32 = 3.4;
 
 /// Dark trim outline, soft shadow and paper fill shared by the cursor sprites.
 fn cursor_body(cv: &mut Canvas, sdf: impl Fn(Vec2) -> f32 + Copy, fill: impl Fn(Vec2) -> C) {
-    let outline = hex(theme::TRIM_SHADOW);
-    cv.shadow(sdf, v(2.0, 3.0), 3.0, 0.5);
+    let outline = CURSOR_INK;
+    cv.shadow(sdf, v(2.0, 3.0), 3.0, 0.45);
     cv.fill(move |p| sdf(p) - OW_CURSOR, |_| outline);
     cv.fill(sdf, fill);
 }
 
-/// A rounded arrow cursor: cream-paper fill, wood-trim outline and a dusty-rose
-/// tip. The arrow tip sits at the top-left hotspot (7, 7).
+/// Cursor palette: a flat copper body inside a thick dark-brown border, in the
+/// soft rounded-triangle style of the logo's chunky shapes.
+const CURSOR_INK: C = hex(0x2a170e);
+const CURSOR_FILL: C = hex(0xe8893a);
+const CURSOR_FILL_HI: C = hex(0xf6b46c);
+
+/// The rounded-triangle pointer: tip at the hotspot (7, 7), a long left edge,
+/// a short right edge and a gently concave back.
+fn cursor_arrow_sdf(p: Vec2) -> f32 {
+    let r = 3.0;
+    let tri = poly(p, &[v(7.0 + r, 7.0 + r * 1.6), v(9.5 + r, 37.0 - r), v(33.0 - r * 1.6, 26.0 - r * 0.4)]) - r;
+    // Hollow the back edge (from the lower-left corner to the right corner).
+    let back = 23.0 - p.distance(v(30.0, 48.5));
+    tri.max(back)
+}
+
+fn cursor_arrow(cv: &mut Canvas) {
+    cursor_body(cv, cursor_arrow_sdf, |p| mix(CURSOR_FILL_HI, CURSOR_FILL, ((p.y - 7.0) / 14.0).clamp(0.0, 1.0)));
+}
+
+/// A round badge at the cursor's lower right, for the build and mine states.
+fn cursor_badge(cv: &mut Canvas, fill: C) -> Vec2 {
+    let c = v(36.0, 36.0);
+    cv.shadow(move |p| circle(p, c, 8.5), v(1.0, 2.0), 2.0, 0.4);
+    cv.fill(move |p| circle(p, c, 8.5 + 2.4), |_| CURSOR_INK);
+    cv.fill(move |p| circle(p, c, 8.5), move |_| fill);
+    c
+}
+
 pub fn cursor_point() -> Canvas {
     let mut cv = Canvas::new(48, 48);
-    let sdf = |p: Vec2| poly(p, &[v(8.0, 7.0), v(30.0, 21.0), v(21.0, 26.0), v(21.0, 38.0), v(13.0, 38.0), v(13.0, 25.0), v(16.0, 15.0)]);
-    let fill = move |p: Vec2| mix(CREAM, PAPER, ((p.y - 7.0) / 31.0).clamp(0.0, 1.0));
-    cursor_body(&mut cv, sdf, fill);
-    // Dusty-rose lacquer tip.
-    cv.fill(move |p| poly(p, &[v(8.0, 7.0), v(20.0, 14.0), v(13.0, 16.0)]), |_| hex(theme::LACQUER_500));
+    cursor_arrow(&mut cv);
     cv
 }
 
-/// A soft mitten-like pointing hand in the same paper-and-wood style. The
-/// fingertip sits at the hotspot (9, 9).
+/// A rounded glove pointing up-left: the index finger's tip is the hotspot
+/// (9, 9), with three curled knuckles and a thumb along the palm.
 pub fn cursor_hand() -> Canvas {
     let mut cv = Canvas::new(48, 48);
-    let finger = move |p: Vec2| capsule(p, v(9.0, 9.0), v(22.0, 23.0), 5.5);
-    let body = move |p: Vec2| circle(p, v(28.0, 33.0), 13.0);
-    let thumb = move |p: Vec2| capsule(p, v(21.0, 26.0), v(14.0, 36.0), 5.0);
-    let sdf = move |p: Vec2| finger(p).min(body(p)).min(thumb(p));
-    let fill = move |p: Vec2| mix(CREAM, PAPER, ((p.y - 9.0) / 30.0).clamp(0.0, 1.0));
-    cursor_body(&mut cv, sdf, fill);
+    let index = move |p: Vec2| capsule(p, v(10.0, 10.0), v(20.0, 21.0), 4.6);
+    let palm = move |p: Vec2| rbox(p, 17.0, 20.0, 19.0, 17.0, 7.0);
+    let knuckles = move |p: Vec2| {
+        circle(p, v(27.5, 19.5), 4.2).min(circle(p, v(33.0, 23.0), 4.0)).min(circle(p, v(36.0, 28.5), 3.7))
+    };
+    let thumb = move |p: Vec2| capsule(p, v(19.0, 27.0), v(12.5, 32.0), 4.0);
+    let sdf = move |p: Vec2| index(p).min(palm(p)).min(knuckles(p)).min(thumb(p));
+    cursor_body(&mut cv, sdf, |p| mix(CURSOR_FILL_HI, CURSOR_FILL, ((p.y - 9.0) / 16.0).clamp(0.0, 1.0)));
+    // Ink creases between the curled fingers.
+    for (a, b) in [(v(26.0, 23.5), v(29.0, 25.0)), (v(30.5, 27.0), v(33.0, 29.0))] {
+        cv.fill(move |p| capsule(p, a, b, 0.7), |_| with_alpha(CURSOR_INK, 0.7));
+    }
     cv
 }
 
-/// The point cursor plus a small brass "+" badge at the bottom-right.
+/// The pointer with a moss-green "+" badge.
 pub fn cursor_build() -> Canvas {
-    let mut cv = cursor_point();
-    let c = v(37.0, 37.0);
-    cv.shadow(move |p| circle(p, c, 8.0), v(1.0, 1.0), 1.5, 0.3);
-    cv.solid(move |p| circle(p, c, 7.0), BRASS, 1.2);
-    cv.solid(move |p| rbox(p, c.x - 4.0, c.y - 1.2, 8.0, 2.4, 0.6), CREAM, 0.0);
-    cv.solid(move |p| rbox(p, c.x - 1.2, c.y - 4.0, 2.4, 8.0, 0.6), CREAM, 0.0);
+    let mut cv = Canvas::new(48, 48);
+    cursor_arrow(&mut cv);
+    let c = cursor_badge(&mut cv, hex(0x6fa142));
+    cv.fill(move |p| rbox(p, c.x - 4.5, c.y - 1.4, 9.0, 2.8, 1.0), |_| CREAM);
+    cv.fill(move |p| rbox(p, c.x - 1.4, c.y - 4.5, 2.8, 9.0, 1.0), |_| CREAM);
     cv
 }
 
-/// A tiny pickaxe: a wooden handle under a brass head, for the mine cursor.
-/// The pick tip sits at the hotspot (8, 14).
+/// The pointer with a little pickaxe badge, for hand-mining and picking up.
 pub fn cursor_mine() -> Canvas {
     let mut cv = Canvas::new(48, 48);
-    let outline = hex(theme::TRIM_SHADOW);
-    let head = move |p: Vec2| capsule(p, v(7.0, 14.0), v(26.0, 19.0), 4.0);
-    let handle = move |p: Vec2| capsule(p, v(17.0, 16.0), v(29.0, 40.0), 3.2);
-    let sdf = move |p: Vec2| head(p).min(handle(p));
-    cv.shadow(sdf, v(2.0, 3.0), 3.0, 0.5);
-    cv.fill(move |p| sdf(p) - OW_CURSOR, |_| outline);
-    cv.fill(head, move |p| mix(BRASS, COPPER, ((p.x - 7.0) / 19.0).clamp(0.0, 1.0)));
-    cv.fill(handle, move |p| mix(WOOD, WOOD_DARK, ((p.y - 16.0) / 24.0).clamp(0.0, 1.0)));
-    cv.solid(move |p| circle(p, v(17.0, 16.0), 3.0), BRASS, 0.0);
+    cursor_arrow(&mut cv);
+    let c = cursor_badge(&mut cv, hex(0x7a5236));
+    // Wooden handle from lower-left to the head's middle.
+    cv.fill(move |p| capsule(p, c + v(-4.0, 4.5), c + v(1.5, -2.0), 1.3), |_| hex(0xe0b27a));
+    // Curved steel head: an arc across the top of the badge, pointed at both ends.
+    let head = move |p: Vec2| {
+        let q = p - (c + v(1.5, 6.5));
+        let ring = (q.length() - 8.5).abs() - 1.6 * (1.0 - (q.x / 7.5).abs()).clamp(0.35, 1.0);
+        ring.max(p.y - (c.y + 0.5))
+    };
+    cv.fill(head, |_| hex(0xdfe4e8));
     cv
 }
 

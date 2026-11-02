@@ -32,7 +32,7 @@ const CURSOR_DRAW: f32 = 36.0;
 pub const POINT_HOTSPOT: [f32; 2] = [7.0, 7.0];
 pub const HAND_HOTSPOT: [f32; 2] = [9.0, 9.0];
 pub const BUILD_HOTSPOT: [f32; 2] = [7.0, 7.0];
-pub const MINE_HOTSPOT: [f32; 2] = [8.0, 14.0];
+pub const MINE_HOTSPOT: [f32; 2] = [7.0, 7.0];
 
 /// Picks the cursor sprite. Priorities: Mine > Build > Hand > Point, with one
 /// wrinkle — Build only applies when the mouse is *not* over clickable UI, so
