@@ -1,6 +1,6 @@
 [package]
 name = "cogworks"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 description = "A cozy automation game: mine, build belts and machines, research, and wake the Grand Engine."
 license = "PolyForm-Noncommercial-1.0.0"
