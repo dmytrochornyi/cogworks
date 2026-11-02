@@ -10,7 +10,7 @@ research tree, keep the smoke-sensitive hives at bay, and finally wake the
 
 ![Rust](https://img.shields.io/badge/Rust-2024_edition-b7410e?logo=rust)
 ![macroquad](https://img.shields.io/badge/engine-macroquad-6e4a7e)
-![License: MIT](https://img.shields.io/badge/code-MIT-green)
+![License: PolyForm Noncommercial](https://img.shields.io/badge/license-PolyForm_Noncommercial-orange)
 
 ![A small factory at sunset, lit by lamp poles](docs/screenshots/sunset-factory.jpg)
 
@@ -120,12 +120,15 @@ cargo run --release --bin gen_assets    # repaint every sprite into assets/
 
 ## Assets and licences
 
-- **Code and sprites**: MIT. See [`LICENSE`](LICENSE).
+- **Code and sprites**: [PolyForm Noncommercial 1.0.0](https://polyformproject.org/licenses/noncommercial/1.0.0/).
+  See [`LICENSE`](LICENSE). You're free to play, study, modify and share
+  Cogworks for any noncommercial purpose. Selling it, or using it in a
+  commercial product, is not allowed without the author's permission.
 - **Font**: [M PLUS Rounded 1c](https://fonts.google.com/specimen/M+PLUS+Rounded+1c),
   SIL Open Font License 1.1. See [`assets/fonts/OFL.txt`](assets/fonts/OFL.txt).
 - **Music, ambience and sound effects** (`assets/audio/`): original arrangements
   and edits built from the free sample packs by [Mondo Loops](https://mondoloops.com)
   (*Dreamy Lofi Hip Hop Samples Vol. 1* and *Organic Lofi Hip Hop Vol. 1*).
-  These files are **not** covered by the MIT licence. Don't extract them for
+  These files are **not** covered by the PolyForm licence. Don't extract them for
   reuse as samples or register them with Content ID. The raw packs aren't
   included in this repository.

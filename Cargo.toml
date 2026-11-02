@@ -3,7 +3,7 @@ name = "cogworks"
 version = "0.1.0"
 edition = "2024"
 description = "A cozy automation game: mine, build belts and machines, research, and wake the Grand Engine."
-license = "MIT"
+license = "PolyForm-Noncommercial-1.0.0"
 authors = ["Dmytro Chornyi"]
 default-run = "cogworks"
 
