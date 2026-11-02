@@ -112,6 +112,13 @@ fn main() {
     for (name, w, h) in [
         ("player_back", 64, 64),
         ("player_side", 64, 64),
+        ("player_front_right", 64, 64),
+        ("player_back_right", 64, 64),
+        ("orefield_iron", 256, 256),
+        ("orefield_copper", 256, 256),
+        ("orefield_coal", 256, 256),
+        ("orefield_stone", 256, 256),
+        ("orefield_quartz", 256, 256),
         ("tree_0", 128, 160),
         ("tree_1", 96, 176),
         ("tree_2", 96, 176),
