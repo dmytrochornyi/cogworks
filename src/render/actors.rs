@@ -1,5 +1,3 @@
-use std::f32::consts::TAU;
-
 use macroquad::prelude::*;
 
 use crate::assets::{Assets, SpriteParams};
@@ -8,55 +6,19 @@ use crate::world::{Enemy, Player};
 use super::camera::Cam;
 use super::{PX, TERRA, world_bar};
 
-/// One walk step is this many tiles; a full two-foot cycle is four frames.
+/// Tiles walked per footfall; drives the dust puffs under the robot.
 pub const WALK_STEP: f32 = 0.35;
-/// Walk bob amplitude in tiles: visible but gentle (tested to stay 0.04..0.08).
-const WALK_BOB_AMP: f32 = 0.06;
-/// Lean at full horizontal speed, in radians (tested to stay within ±0.12).
-const WALK_MAX_LEAN: f32 = 0.12;
-/// Idle breathing period, seconds (tested to stay ≥ 2 s).
-const IDLE_PERIOD: f32 = 2.5;
-/// Idle breathing amplitude in tiles (tested to stay ≤ 0.02).
-const IDLE_BOB_AMP: f32 = 0.015;
+/// Lean at full horizontal speed, in radians.
+const MAX_LEAN: f32 = 0.17;
 
-/// Everything the player's draw step needs, computed purely from distance walked
-/// and velocity so the animation follows the feet rather than wall time.
-pub struct Pose {
-    /// Walk-cycle frame 0..=3; contact frames are 0 and 2.
-    pub frame: usize,
-    /// Vertical offset in tiles (up is positive screen space).
-    pub bob: f32,
-    /// Rotation in radians, leaning into horizontal motion (about the feet).
-    pub lean: f32,
-    /// Footfall squash amount in 0..=1; 0 = no squash, 1 = planted foot.
-    pub squash: f32,
-    /// Whether to mirror the sprite (moving left).
-    pub face_left: bool,
-}
-
-/// Number of footfalls (contacts) at `stride` tiles walked.
+/// Number of footfalls (dust puffs) at `stride` tiles walked.
 pub fn walk_footfalls(stride: f32) -> u64 {
     (stride / WALK_STEP).floor().max(0.0) as u64
 }
 
-/// The pure walk cycle: frame from distance, bob from the step phase, lean from
-/// horizontal velocity, and a gentle idle breath when standing still.
-pub fn walk_pose(stride: f32, vel: Vec2, t: f32) -> Pose {
-    if vel == Vec2::ZERO {
-        // Slow idle breathing: tiny amplitude, long period, no lean or squash.
-        let bob = IDLE_BOB_AMP * (t / IDLE_PERIOD * TAU).sin();
-        return Pose { frame: 0, bob, lean: 0.0, squash: 0.0, face_left: false };
-    }
-    let steps = stride / WALK_STEP;
-    let frame = walk_footfalls(stride) % 4;
-    // Bob dips as a foot plants (phase 0) and rises as it passes under the body.
-    let bob = -WALK_BOB_AMP * (TAU * steps).cos();
-    // Squash peaks on the planted foot and eases off through the passing frame.
-    let phase = steps.fract();
-    let squash = (1.0 - phase) * (1.0 - phase);
-    let lean = (vel.x * 0.02).clamp(-WALK_MAX_LEAN, WALK_MAX_LEAN);
-    let face_left = vel.x < 0.0;
-    Pose { frame: frame as usize, bob, lean, squash, face_left }
+/// How far the hovering robot tips into its horizontal motion, in radians.
+pub fn lean(vel: Vec2) -> f32 {
+    (vel.x * 0.028).clamp(-MAX_LEAN, MAX_LEAN)
 }
 
 pub(super) fn draw_enemy(a: &Assets, en: &Enemy, cam: &Cam) {
@@ -64,37 +26,74 @@ pub(super) fn draw_enemy(a: &Assets, en: &Enemy, cam: &Cam) {
     let c = cam.w2s(en.pos);
     let frame = (en.phase * 0.6) as i32 % 2;
     let (key, px) = if en.brute { (["brute_0", "brute_1"][frame as usize], 72.0) } else { (["mite_0", "mite_1"][frame as usize], 48.0) };
-    let heading = (en.target - en.pos).to_angle();
-    a.draw_centered(key, c, Vec2::splat(px / PX * z), heading, WHITE);
+    // Bugs are painted facing the viewer, so they stay upright and only
+    // mirror to face the side they're heading toward.
+    let size = Vec2::splat(px / PX * z);
+    draw_ellipse(c.x, c.y + size.y * 0.42, size.x * 0.32, size.y * 0.1, 0.0, Color::new(0.1, 0.06, 0.04, 0.22));
+    a.draw(key, c - size * 0.5, size, SpriteParams { flip_x: en.target.x < en.pos.x, ..Default::default() });
     if en.hp < en.max_hp() {
         let w = px / PX * z * 0.6;
         world_bar(vec2(c.x, c.y - w * 0.8), w, en.hp / en.max_hp(), TERRA, z);
     }
 }
 
-pub(super) fn draw_player(a: &Assets, player: &Player, cam: &Cam, t: f32) {
-    let pose = walk_pose(player.stride, player.vel, t);
-    let walking = player.vel != Vec2::ZERO;
-    // Walking uses the four-frame cycle; idle keeps the breathing pair.
-    let key = if walking {
-        ["player_walk_0", "player_walk_1", "player_walk_2", "player_walk_3"][pose.frame]
-    } else {
-        ["player_0", "player_1"][if pose.bob >= 0.0 { 0 } else { 1 }]
-    };
+/// Which way the player faces, kept between frames so standing still holds
+/// the last direction.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Facing {
+    Front,
+    Back,
+    Left,
+    Right,
+}
 
+impl Facing {
+    /// The facing for a movement velocity, or `None` when standing still.
+    /// Mostly-vertical motion shows the front or back; otherwise the side.
+    pub fn from_vel(vel: Vec2) -> Option<Facing> {
+        if vel.length_squared() < 1e-4 {
+            return None;
+        }
+        Some(if vel.y.abs() > vel.x.abs() * 1.2 {
+            if vel.y > 0.0 { Facing::Front } else { Facing::Back }
+        } else if vel.x < 0.0 {
+            Facing::Left
+        } else {
+            Facing::Right
+        })
+    }
+}
+
+/// The robot hovers: a slow float when idle, a quicker bob and a lean into
+/// the motion when moving, a flickering thruster glow under it and a soft
+/// shadow on the ground that shrinks as it rises.
+pub(super) fn draw_player(a: &Assets, player: &Player, cam: &Cam, t: f32, facing: Facing) {
+    let moving = player.vel != Vec2::ZERO;
     let z = cam.zoom;
-    // Slight squash on footfalls: shorter and wider by a hair, not a full scale.
-    let sx = z * 1.05 * (1.0 + 0.04 * pose.squash);
-    let sy = z * 1.05 * (1.0 - 0.05 * pose.squash);
-    let bob_px = pose.bob * z;
-    let c = cam.w2s(player.pos - vec2(0.0, 0.2));
-    let top_left = c - vec2(sx, sy) * 0.5 - vec2(0.0, bob_px);
-    // Rotate about the feet (bottom centre), which move with the bob offset.
-    let pivot = vec2(c.x, c.y + sy * 0.5 - bob_px);
-    a.draw(key, top_left, vec2(sx, sy), SpriteParams {
-        rotation: pose.lean,
-        pivot: Some(pivot),
-        flip_x: pose.face_left,
+    let float = 0.06 * (t * 2.6).sin() + if moving { 0.025 * (t * 11.0).sin() } else { 0.0 };
+    let lift = 0.16 + float;
+    let ground = cam.w2s(player.pos + vec2(0.0, 0.3));
+    let size = Vec2::splat(z * 1.05);
+
+    let sh = 1.0 - float * 2.5;
+    draw_ellipse(ground.x, ground.y, size.x * 0.26 * sh, size.y * 0.085 * sh, 0.0, Color::new(0.1, 0.06, 0.04, 0.24));
+
+    let base = ground - vec2(0.0, lift * z);
+    let flicker = 0.8 + 0.2 * (t * 37.0).sin() * (t * 23.0).cos();
+    a.draw_centered("glow", base + vec2(0.0, z * 0.05), vec2(z * 0.55, z * 0.32) * flicker, 0.0, Color::new(1.0, 0.62, 0.22, 0.55 * flicker));
+
+    let (key, flip) = match facing {
+        Facing::Front => ("player_0", false),
+        Facing::Back => ("player_back", false),
+        Facing::Right => ("player_side", false),
+        Facing::Left => ("player_side", true),
+    };
+    // Lean into horizontal motion, tipping forward a touch when moving up or down.
+    let lean = lean(player.vel);
+    a.draw(key, base - vec2(size.x * 0.5, size.y), size, SpriteParams {
+        rotation: lean,
+        pivot: Some(base),
+        flip_x: flip,
         ..Default::default()
     });
 }
@@ -104,55 +103,25 @@ mod tests {
     use super::*;
 
     #[test]
-    fn walk_frame_follows_distance() {
-        // The frame advances once per WALK_STEP tiles, independent of wall time.
-        let vel = vec2(1.0, 0.0);
-        assert_eq!(walk_pose(0.0, vel, 0.0).frame, 0);
-        assert_eq!(walk_pose(WALK_STEP * 0.5, vel, 0.0).frame, 0);
-        assert_eq!(walk_pose(WALK_STEP, vel, 0.0).frame, 1);
-        assert_eq!(walk_pose(WALK_STEP * 2.0, vel, 0.0).frame, 2);
-        assert_eq!(walk_pose(WALK_STEP * 3.0, vel, 0.0).frame, 3);
-        assert_eq!(walk_pose(WALK_STEP * 4.0, vel, 0.0).frame, 0);
-        // Same stride → same frame at any t.
-        assert_eq!(walk_pose(WALK_STEP * 1.5, vel, 0.0).frame, walk_pose(WALK_STEP * 1.5, vel, 99.0).frame);
+    fn robot_leans_into_motion() {
+        assert!(lean(vec2(5.0, 0.0)) > 0.0 && lean(vec2(5.0, 0.0)) <= MAX_LEAN);
+        assert!(lean(vec2(-5.0, 0.0)) < 0.0 && lean(vec2(-5.0, 0.0)) >= -MAX_LEAN);
+        assert_eq!(lean(vec2(0.0, 5.0)), 0.0, "vertical motion stays upright");
+        assert_eq!(lean(vec2(1000.0, 0.0)), MAX_LEAN);
     }
 
     #[test]
-    fn walk_bob_is_visible_but_gentle() {
-        let mut peak = 0.0f32;
-        for i in 0..400 {
-            let stride = i as f32 * 0.01;
-            let bob = walk_pose(stride, vec2(1.0, 0.0), 0.0).bob.abs();
-            peak = peak.max(bob);
-        }
-        assert!(peak >= 0.04, "bob too subtle: {peak}");
-        assert!(peak <= 0.08, "bob too strong: {peak}");
+    fn facing_follows_motion() {
+        assert_eq!(Facing::from_vel(vec2(0.0, 3.0)), Some(Facing::Front));
+        assert_eq!(Facing::from_vel(vec2(0.0, -3.0)), Some(Facing::Back));
+        assert_eq!(Facing::from_vel(vec2(3.0, 1.0)), Some(Facing::Right));
+        assert_eq!(Facing::from_vel(vec2(-3.0, -1.0)), Some(Facing::Left));
+        assert_eq!(Facing::from_vel(Vec2::ZERO), None, "standing still keeps the last facing");
     }
 
     #[test]
-    fn walk_leans_into_motion() {
-        let right = walk_pose(1.0, vec2(1.0, 0.0), 0.0);
-        assert!(right.lean > 0.0 && right.lean <= WALK_MAX_LEAN + 1e-6, "right lean {}", right.lean);
-        let left = walk_pose(1.0, vec2(-1.0, 0.0), 0.0);
-        assert!(left.lean < 0.0 && left.lean >= -WALK_MAX_LEAN - 1e-6, "left lean {}", left.lean);
-        // Vertical motion stays upright.
-        assert_eq!(walk_pose(1.0, vec2(0.0, 1.0), 0.0).lean, 0.0);
-    }
-
-    #[test]
-    fn idle_breathes_slowly() {
-        // Tiny amplitude at all times.
-        for i in 0..300 {
-            let t = i as f32 * 0.02;
-            let bob = walk_pose(0.0, Vec2::ZERO, t).bob;
-            assert!(bob.abs() <= 0.02 + 1e-6, "idle bob {bob} at t={t}");
-        }
-        // Period ≥ 2 s: the bob stays ≥ 0 through the first second (half period ≥ 1 s)…
-        for i in 0..=50 {
-            let t = i as f32 * 0.02;
-            assert!(walk_pose(0.0, Vec2::ZERO, t).bob >= -1e-6, "idle bob went negative too soon at t={t}");
-        }
-        // …but does breathe: it dips below zero by 1.5 s.
-        assert!(walk_pose(0.0, Vec2::ZERO, 1.5).bob < 0.0);
+    fn footfalls_count_whole_steps() {
+        assert_eq!(walk_footfalls(0.0), 0);
+        assert_eq!(walk_footfalls(WALK_STEP * 2.5), 2);
     }
 }

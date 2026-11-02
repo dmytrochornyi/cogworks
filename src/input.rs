@@ -288,7 +288,7 @@ impl Game {
         let right_held = right_down && self.gesture_right == Gesture::World;
         let in_reach = self.world.player.in_reach(tile);
         let building = self.world.entity_ref_at(tile).filter(|e| e.kind != Kind::Hive).map(|e| e.pos);
-        let ore_here = self.world.ore_at(tile).is_some();
+        let ore_here = self.world.ore_at(tile).is_some() || self.world.has_tree(tile);
         match right_action(right_held, right_press, building, tile, in_reach, ore_here, self.paused) {
             RightAction::Deconstruct(pos) => {
                 self.world.player.mining = None;

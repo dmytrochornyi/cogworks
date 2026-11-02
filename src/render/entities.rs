@@ -13,13 +13,14 @@ use super::camera::Cam;
 use super::juice::Juice;
 use super::ground::draw_ground;
 use super::overlays::draw_wires;
-use super::{BADGE, HONEY, INK, PX, SAGE, TERRA, angle, lantern_seed, rgba, sway, world_bar};
+use super::{BADGE, HONEY, INK, PX, SAGE, TERRA, angle, hash, lantern_seed, rgba, sway, wind, world_bar};
 
 pub(super) fn item_key(item: Item) -> Option<&'static str> {
     Some(match item {
         Item::IronOre => "item_iron_ore",
         Item::CopperOre => "item_copper_ore",
         Item::Coal => "item_coal",
+        Item::Wood => "item_wood",
         Item::Stone => "item_stone",
         Item::Quartz => "item_quartz",
         Item::IronPlate => "item_iron_plate",
@@ -214,6 +215,8 @@ fn draw_pipe(a: &Assets, world: &World, e: &Entity, s0: Vec2, z: f32) {
 
 enum Drawable<'a> {
     Entity(&'a Entity),
+    /// A tree on this tile, of this kind.
+    Tree(IVec2, u8),
     Player,
     Enemy(&'a Enemy),
 }
@@ -290,6 +293,14 @@ pub fn draw_world(a: &Assets, world: &World, cam: &Cam, t: f32, juice: &Juice) {
         .filter(|(_, e)| !flat(e.kind))
         .map(|&(_, e)| ((e.pos.y + e.dims().y) as f32, Drawable::Entity(e)))
         .collect();
+    for y in lo.y - 1..=hi.y + 3 {
+        for x in lo.x - 2..=hi.x + 2 {
+            let p = ivec2(x, y);
+            if let Some((kind, _)) = world.tree_at(p) {
+                stand.push(((y + 1) as f32 - 0.05, Drawable::Tree(p, kind)));
+            }
+        }
+    }
     stand.extend(world.enemies.iter().map(|en| (en.pos.y + 0.3, Drawable::Enemy(en))));
     if world.player.alive() {
         stand.push((world.player.pos.y + 0.3, Drawable::Player));
@@ -311,7 +322,11 @@ pub fn draw_world(a: &Assets, world: &World, cam: &Cam, t: f32, juice: &Juice) {
                 }
             }
             Drawable::Enemy(en) => draw_enemy(a, en, cam),
-            Drawable::Player => draw_player(a, &world.player, cam, t),
+            Drawable::Tree(p, kind) => {
+                let chopping = world.player.mining.is_some_and(|(m, _)| m == *p);
+                draw_tree(a, cam, t, *p, *kind, chopping);
+            }
+            Drawable::Player => draw_player(a, &world.player, cam, t, juice.facing),
         }
     }
 
@@ -356,6 +371,25 @@ pub fn draw_world(a: &Assets, world: &World, cam: &Cam, t: f32, juice: &Juice) {
         let (p, q) = (cam.w2s(s.from), cam.w2s(s.to));
         draw_line(p.x, p.y, q.x, q.y, (k * 4.0).max(1.5), theme::alpha(theme::LAMP, 0.9));
     }
+}
+
+/// A tree standing on its tile: trunk base at the tile's bottom centre, crown
+/// leaning in the wind, and a quick shiver while it's being chopped.
+fn draw_tree(a: &Assets, cam: &Cam, t: f32, p: IVec2, kind: u8, chopping: bool) {
+    let key = ["tree_0", "tree_1", "tree_2", "tree_3"][kind.min(3) as usize];
+    let k = cam.zoom / PX;
+    let size = a.size(key) * k;
+    // Small per-tree jitter so forests don't look planted on a grid.
+    let h = hash(p.x, p.y);
+    let jitter = vec2(((h >> 3) % 17) as f32 - 8.0, ((h >> 9) % 9) as f32 - 4.0) / PX * cam.zoom;
+    let base = cam.w2s(p.as_vec2() + vec2(0.5, 0.92)) + jitter;
+    draw_ellipse(base.x, base.y, size.x * 0.34, size.x * 0.11, 0.0, theme::alpha(theme::SHADOW, 0.22));
+    let mut rot = wind(t, p.x as f32, p.y as f32) * if kind == 3 { 0.05 } else { 0.08 };
+    if chopping {
+        rot += (t * 48.0).sin() * 0.035;
+    }
+    let flip = (h >> 15) & 1 == 1;
+    a.draw(key, base - vec2(size.x * 0.5, size.y), size, SpriteParams { rotation: rot, pivot: Some(base), flip_x: flip, ..Default::default() });
 }
 
 fn draw_entity(a: &Assets, e: &Entity, cam: &Cam, t: f32) {
@@ -436,7 +470,7 @@ fn draw_entity(a: &Assets, e: &Entity, cam: &Cam, t: f32) {
 /// with a scale factor `k`. It is its own sprite (64x48) whose hook top sits at
 /// local (32, 4); we place that point on the pole's hook and rotate about it.
 fn draw_lantern(a: &Assets, s0: Vec2, k: f32, rotation: f32, tint: Color) {
-    let hook = s0 + vec2(46.0, -27.0) * k;
+    let hook = s0 + vec2(49.0, -31.0) * k;
     let top_left = hook - vec2(32.0, 4.0) * k;
     a.draw("lantern", top_left, vec2(64.0, 48.0) * k, SpriteParams {
         rotation,

@@ -27,6 +27,7 @@ impl World {
             events: Vec::new(),
             sounds: Vec::new(),
             fx: Vec::new(),
+            trees: Vec::new(),
             power: Power::default(),
             fluids: FluidNets::default(),
             shots: Vec::new(),
@@ -91,6 +92,15 @@ impl World {
                 }
             }
             placed += 1;
+        }
+        self.grow_trees(&mut rng);
+        // No tree grows under a hive.
+        for e in self.entities.iter().flatten() {
+            for t in footprint(e.kind, e.pos, e.dir) {
+                if in_bounds(t) {
+                    self.trees[idx(t)] = 0;
+                }
+            }
         }
     }
 

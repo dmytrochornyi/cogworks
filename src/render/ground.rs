@@ -6,7 +6,7 @@ use crate::theme;
 use crate::world::*;
 
 use super::camera::Cam;
-use super::{hash, sway};
+use super::{hash, wind};
 
 /// The sixteen seamless ground tiles, indexed `[x][y]` by `x.rem_euclid(4)` and
 /// `y.rem_euclid(4)`. All are cut from one periodic 256x256 sheet, so touching
@@ -58,11 +58,13 @@ pub(super) fn draw_ground(a: &Assets, world: &World, cam: &Cam, lo: IVec2, hi: I
                     });
                 }
                 Some(Resource::Tar) => a.draw(["tar_0", "tar_1"][(h % 2) as usize], s, Vec2::splat(z), SpriteParams::default()),
-                None if h % 100 < 9 && world.entity_at(p).is_none() => {
+                None if h % 100 < 13 && world.entity_at(p).is_none() && !world.has_tree(p) => {
                     let key = format!("decor_{}", (h >> 8) % 8);
                     let off = vec2(((h >> 12) % 32) as f32, ((h >> 17) % 32) as f32) / 64.0 * z;
-                    // Grass tufts and flowers sway about their base in a gentle breeze.
-                    let sw = sway(t, x as f32 * 0.37 + y as f32 * 0.11, 0.07, 3.0);
+                    // Grass tufts, flowers and mushrooms bend about their base in
+                    // the wind; mushrooms are stiffer than grass.
+                    let stiff = if (h >> 8) % 8 == 5 { 0.35 } else { 1.0 };
+                    let sw = wind(t, x as f32, y as f32) * 0.32 * stiff;
                     let base = s + off + vec2(z * 0.25, z * 0.5);
                     a.draw(&key, s + off, Vec2::splat(z * 0.5), SpriteParams {
                         rotation: sw,

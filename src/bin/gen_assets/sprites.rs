@@ -5,7 +5,6 @@ use std::f32::consts::{PI, TAU};
 use macroquad::math::{Vec2, vec2};
 
 use super::paint::*;
-use crate::theme;
 
 /// Outline width used by the large machine sprites, in native pixels.
 const OW: f32 = 2.5;

@@ -457,6 +457,7 @@ pub const HEART: u32 = 0xf08c84;
 pub const ITEM_IRON_ORE: u32 = 0x5a554e;
 pub const ITEM_COPPER_ORE: u32 = 0x9a5231;
 pub const ITEM_COAL: u32 = ORE_COAL;
+pub const ITEM_WOOD: u32 = 0x9a6a3e;
 pub const ITEM_STONE: u32 = 0x7d6748;
 pub const ITEM_QUARTZ: u32 = QUARTZ;
 pub const ITEM_IRON_PLATE: u32 = 0x6a625a;
@@ -542,6 +543,7 @@ mod tests {
             ITEM_COAL,
             ITEM_STONE,
             ITEM_QUARTZ,
+            ITEM_WOOD,
             ITEM_IRON_PLATE,
             ITEM_COPPER_PLATE,
             ITEM_BRICK,

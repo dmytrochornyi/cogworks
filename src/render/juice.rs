@@ -5,6 +5,7 @@ use std::f32::consts::TAU;
 
 use macroquad::prelude::*;
 
+use super::actors::Facing;
 use super::camera::Cam;
 use super::entities::draw_item;
 use super::particles::rand01;
@@ -47,15 +48,29 @@ struct Flyer {
     item: Item,
 }
 
-#[derive(Default)]
 pub struct Juice {
+    /// The way the player faces; kept while standing still.
+    pub facing: Facing,
     /// Footprint top-left and age of each building still popping in.
     pops: Vec<(IVec2, f32)>,
     chunks: Vec<Chunk>,
     flyers: Vec<Flyer>,
 }
 
+impl Default for Juice {
+    fn default() -> Self {
+        Juice { facing: Facing::Front, pops: Vec::new(), chunks: Vec::new(), flyers: Vec::new() }
+    }
+}
+
 impl Juice {
+    /// Turns the player toward their movement; standing still keeps the facing.
+    pub fn face(&mut self, vel: Vec2) {
+        if let Some(f) = Facing::from_vel(vel) {
+            self.facing = f;
+        }
+    }
+
     pub fn built(&mut self, pos: IVec2) {
         self.pops.retain(|(p, _)| *p != pos);
         self.pops.push((pos, 0.0));

@@ -43,6 +43,7 @@ items! {
     Coal => "Coal", theme::ITEM_COAL, Round;
     Stone => "Stone", theme::ITEM_STONE, Round;
     Quartz => "Quartz", theme::ITEM_QUARTZ, Round;
+    Wood => "Wood", theme::ITEM_WOOD, Round;
     IronPlate => "Iron Plate", theme::ITEM_IRON_PLATE, Square;
     CopperPlate => "Copper Plate", theme::ITEM_COPPER_PLATE, Square;
     Brick => "Brick", theme::ITEM_BRICK, Square;
@@ -98,6 +99,7 @@ impl Item {
     pub fn fuel_value(self) -> Option<f32> {
         match self {
             Item::Coal => Some(4.0e6),
+            Item::Wood => Some(2.0e6),
             Item::FuelCell => Some(25.0e6),
             _ => None,
         }

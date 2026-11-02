@@ -131,6 +131,7 @@ impl Game {
             return false;
         }
         self.world.ore_at(tile).is_some()
+            || self.world.has_tree(tile)
             || self.world.entity_ref_at(tile).is_some_and(|e| e.kind != Kind::Hive)
     }
 }

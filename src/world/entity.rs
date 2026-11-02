@@ -91,6 +91,9 @@ impl World {
             return Err("Space is occupied".into());
         }
         let tiles: Vec<IVec2> = footprint(kind, pos, dir).collect();
+        if tiles.iter().any(|&p| self.has_tree(p)) {
+            return Err("A tree is in the way: hold right-click on it to chop it".into());
+        }
         if kind == Kind::Drill && !tiles.iter().any(|&p| self.ore_at(p).is_some()) {
             return Err("Drills must be placed over ore".into());
         }

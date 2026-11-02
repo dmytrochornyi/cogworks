@@ -9,6 +9,8 @@ mod power;
 mod production;
 #[cfg(test)]
 mod tests;
+mod trees;
+
 
 use macroquad::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -401,6 +403,9 @@ pub struct World {
     pub sounds: Vec<Sfx>,
     #[serde(skip)]
     pub fx: Vec<Fx>,
+    /// Trees per tile (see `tree_at`). Empty in saves made before trees.
+    #[serde(default)]
+    pub trees: Vec<u8>,
     #[serde(skip)]
     pub power: Power,
     #[serde(skip)]

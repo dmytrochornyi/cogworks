@@ -1,10 +1,11 @@
 use super::logistics::Src;
 use super::*;
 
-/// A world with no resources, buildings or enemies, and the player out of the way.
+/// A world with no resources, trees, buildings or enemies, and the player out of the way.
 fn blank() -> World {
     let mut w = World::new(7);
     w.res.fill(None);
+    w.trees.clear();
     for id in 0..w.entities.len() {
         w.delete(id);
     }

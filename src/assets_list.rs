@@ -145,4 +145,13 @@ pub const SPRITES: &[(&str, &[u8])] = &[
     ("icon_flask", include_bytes!("../assets/sprites/icon_flask.png")),
     ("icon_bolt", include_bytes!("../assets/sprites/icon_bolt.png")),
     ("icon_note", include_bytes!("../assets/sprites/icon_note.png")),
+    ("player_back", include_bytes!("../assets/sprites/player_back.png")),
+    ("player_side", include_bytes!("../assets/sprites/player_side.png")),
+    ("tree_0", include_bytes!("../assets/sprites/tree_0.png")),
+    ("tree_1", include_bytes!("../assets/sprites/tree_1.png")),
+    ("tree_2", include_bytes!("../assets/sprites/tree_2.png")),
+    ("tree_3", include_bytes!("../assets/sprites/tree_3.png")),
+    ("bird_0", include_bytes!("../assets/sprites/bird_0.png")),
+    ("bird_1", include_bytes!("../assets/sprites/bird_1.png")),
+    ("item_wood", include_bytes!("../assets/sprites/item_wood.png")),
 ];

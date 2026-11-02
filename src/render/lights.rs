@@ -11,7 +11,7 @@ use super::{PX, lantern_seed, rgba, sway};
 
 /// Lantern hook attachment on a pole, in tiles from its top-left tile. This is
 /// the swing pivot; the lantern body hangs straight down from it.
-const LANTERN_HOOK: Vec2 = Vec2::new(46.0 / PX, (21.0 - 48.0) / PX);
+const LANTERN_HOOK: Vec2 = Vec2::new(49.0 / PX, (17.0 - 48.0) / PX);
 /// How far the lantern body centre hangs below the hook, in tiles.
 const LANTERN_DROP: f32 = 14.0 / PX;
 

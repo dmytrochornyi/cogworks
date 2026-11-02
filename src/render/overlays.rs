@@ -9,7 +9,8 @@ use super::camera::Cam;
 use super::entities::draw_kind;
 use super::{PX, WIND, hash, rgba};
 
-const WIRE_ANCHOR: Vec2 = Vec2::new(0.5, (16.0 - 48.0) / PX);
+/// Where wires meet a pole: the post, level with its insulator crossbar.
+const WIRE_ANCHOR: Vec2 = Vec2::new(24.0 / PX, (22.0 - 48.0) / PX);
 
 pub(super) fn draw_wires(world: &World, cam: &Cam) {
     let col = theme::alpha(theme::INK, 0.85);

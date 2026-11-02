@@ -302,11 +302,20 @@ impl World {
         let Some((tile, progress)) = self.player.mining else {
             return;
         };
+        let progress = progress + dt / MINE_TIME;
+        if self.has_tree(tile) {
+            if progress >= 1.0 {
+                self.chop(tile);
+                self.player.mining = self.has_tree(tile).then_some((tile, 0.0));
+            } else {
+                self.player.mining = Some((tile, progress));
+            }
+            return;
+        }
         let Some(ore) = self.ore_at(tile).filter(|_| self.entity_at(tile).is_none()) else {
             self.player.mining = None;
             return;
         };
-        let progress = progress + dt / MINE_TIME;
         if progress >= 1.0 {
             self.player.inv.add(ore, 1);
             self.fx.push(Fx::Mined { tile, item: ore });

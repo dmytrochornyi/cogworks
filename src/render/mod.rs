@@ -2,7 +2,7 @@ use std::f32::consts::{FRAC_PI_2, PI, TAU};
 
 use macroquad::prelude::*;
 
-use crate::assets::{Assets, SpriteParams};
+use crate::assets::Assets;
 use crate::theme::{self, line};
 use crate::ui::{rrect, rrect_lines};
 use crate::world::*;
@@ -102,6 +102,20 @@ fn angle(d: Dir) -> f32 {
 /// curve, so nothing flickers.
 pub fn sway(t: f32, seed: f32, amp: f32, period: f32) -> f32 {
     (t / period * TAU + seed).sin() * amp
+}
+
+/// Lean (radians, positive = toward +x) of a plant or tree crown at world
+/// position (x, y): a gentle per-plant flutter plus gusts that roll across the
+/// map in the wind's direction, so a breeze is visible as a travelling wave.
+pub fn wind(t: f32, x: f32, y: f32) -> f32 {
+    let flutter = (t * 2.3 + x * 1.37 + y * 0.71).sin() * 0.25;
+    // A gust front moves along +x; `phase` is where this plant sits on it.
+    let phase = (x * 0.09 + y * 0.03 - t * 0.55).rem_euclid(1.0);
+    let gust = (1.0 - (phase - 0.5).abs() * 4.0).clamp(0.0, 1.0);
+    let gust = gust * gust * (3.0 - 2.0 * gust);
+    // Plants lean with the gust and spring back with a little wobble.
+    let lean = gust * (0.8 + 0.2 * (t * 7.0 + x).sin());
+    (flutter + lean) * 0.5
 }
 
 /// Per-pole phase so neighbouring lanterns don't swing in lockstep.
@@ -207,6 +221,7 @@ impl Renderer {
         set_camera(&rt_cam);
         clear_background(theme::color(theme::WORLD_CLEAR));
         self.juice.update(dt);
+        self.juice.face(world.player.vel);
         draw_world(a, world, cam, t, &self.juice);
         self.draw_particles(a, cam, t);
         self.juice.draw(a, cam, world.player.pos);
@@ -278,14 +293,16 @@ impl Renderer {
                     a.draw_centered("petal", s, Vec2::splat(p.size * z), spin, rgba(WHITE, f));
                 }
                 PKind::BirdShadow => {
-                    let native = a.size("bird_shadow");
-                    let w = p.size * z;
-                    let size = vec2(w, w * native.y / native.x);
-                    a.draw("bird_shadow", s - size * 0.5, size, SpriteParams {
-                        flip_x: p.seed > 0.5,
-                        tint: theme::alpha(theme::SHADOW, 0.16),
-                        ..Default::default()
-                    });
+                    // A songbird crossing the sky: wings flap between two
+                    // frames, and its soft shadow glides over the ground below.
+                    let flap = ((t * 7.0 + p.seed * 13.0) as i32 & 1) as usize;
+                    let key = ["bird_0", "bird_1"][flap];
+                    let heading = if p.seed > 0.5 { -FRAC_PI_2 } else { FRAC_PI_2 };
+                    let size = a.size(key) / PX * z * 0.95;
+                    let shadow = s + vec2(0.6, 1.6) * z;
+                    a.draw_centered(key, shadow, size * 1.1, heading, theme::alpha(theme::SHADOW, 0.16));
+                    let bob = (t * 2.0 + p.seed * 5.0).sin() * 0.08 * z;
+                    a.draw_centered(key, s - vec2(0.0, bob), size, heading, WHITE);
                 }
             }
         }
