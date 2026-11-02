@@ -10,7 +10,7 @@ use crate::theme::{self, TextSize, line, radius, space};
 use crate::Game;
 
 use super::primitives::{Elevation, circle, circle_lines, clicked, hovered, rrect, rrect_lines, surface};
-use super::style::{BG, BG2, EDGE, HEADER, KEY, SLOT_WELL, TEXT, TEXT_DIM, TITLE};
+use super::style::{BG, BG2, EDGE, HEADER, KEY, SLOT_WELL, TEXT, TEXT_DIM};
 use super::text::{text, text_in, text_w};
 
 pub(super) fn bar(r: Rect, frac: f32, col: Color) {
@@ -113,6 +113,14 @@ pub(super) fn stock_lines(a: &Assets, stock: &Stock, x: f32, y: &mut f32) {
     }
 }
 
+// Window header band colours: moss green from the logo's plaque.
+const HEADER_MOSS: u32 = 0x56763a;
+const HEADER_MOSS_HI: u32 = 0x8fb260;
+const HEADER_MOSS_LO: u32 = 0x3a5426;
+const HEADER_INK: u32 = 0x2a170e;
+const HEADER_TEXT: u32 = 0xfbefd2;
+const HEADER_RIVET: u32 = 0xe8c478;
+
 /// A window with a title, a close button and an Esc hint.
 pub(super) struct Panel<'a> {
     r: Rect,
@@ -148,16 +156,32 @@ impl<'a> Panel<'a> {
         let a = g.assets.clone();
         let mut closed = false;
         if let Some(t) = self.title {
-            text(&a, t, self.r.x + space::XL, self.r.y + space::L, TextSize::Xl, TITLE);
-        }
-        if let Some(s) = self.subtitle {
-            let w = self.title.map(|t| text_w(&a, t, TextSize::Xl)).unwrap_or(0.0);
-            text(&a, s, self.r.x + space::XL + w + space::L, self.r.y + space::L + 8.0, TextSize::S, TEXT_DIM);
+            // A moss-green riveted header band across the top, like the
+            // plaque on the logo, with the title in cream.
+            let band = Rect::new(self.r.x + 9.0, self.r.y + 9.0, self.r.w - 18.0, HEADER - 12.0);
+            rrect(Rect::new(band.x - 1.5, band.y - 1.5, band.w + 3.0, band.h + 3.0), 6.0, theme::color(HEADER_INK));
+            rrect(band, 5.0, theme::color(HEADER_MOSS_LO));
+            rrect(Rect::new(band.x, band.y, band.w, band.h - 3.0), 5.0, theme::color(HEADER_MOSS));
+            rrect(Rect::new(band.x + 6.0, band.y + 2.0, band.w - 12.0, 2.0), 1.0, theme::alpha(HEADER_MOSS_HI, 0.7));
+            for x in [band.x + 8.0, band.right() - 8.0] {
+                circle(vec2(x, band.center().y), 2.6, theme::color(HEADER_INK));
+                circle(vec2(x - 0.6, band.center().y - 0.6), 1.5, theme::color(HEADER_RIVET));
+            }
+            let ty = band.y + (band.h - 3.0) * 0.5 - 15.0;
+            text(&a, t, self.r.x + space::XL + 1.0, ty + 2.0, TextSize::Xl, theme::alpha(HEADER_INK, 0.6));
+            text(&a, t, self.r.x + space::XL, ty, TextSize::Xl, theme::color(HEADER_TEXT));
+            if let Some(s) = self.subtitle {
+                let w = text_w(&a, t, TextSize::Xl);
+                text(&a, s, self.r.x + space::XL + w + space::L, ty + 9.0, TextSize::S, theme::alpha(HEADER_TEXT, 0.8));
+            }
+        } else if let Some(s) = self.subtitle {
+            text(&a, s, self.r.x + space::XL, self.r.y + space::L + 8.0, TextSize::S, TEXT_DIM);
         }
         if self.closable {
             let cb = Rect::new(self.r.right() - space::L - 28.0, self.r.y + space::M, 28.0, 28.0);
             let hint = text_w(&a, "Esc", TextSize::Xs);
-            text(&a, "Esc", cb.x - hint - space::S, self.r.y + space::L - 2.0, TextSize::Xs, KEY);
+            let hint_col = if self.title.is_some() { theme::alpha(HEADER_TEXT, 0.85) } else { KEY };
+            text(&a, "Esc", cb.x - hint - space::S, self.r.y + space::L - 2.0, TextSize::Xs, hint_col);
             if button_kind(&a, cb, "x", true, ButtonKind::Secondary, &mut g.clickables) {
                 closed = true;
             }

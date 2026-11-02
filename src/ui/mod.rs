@@ -27,6 +27,7 @@ pub fn draw(g: &mut Game) {
     g.clickables.clear();
     g.tooltip = None;
     set_camera(&ui_camera(ui_width(), ui_height()));
+    primitives::set_paper(g.assets.atlas.clone(), g.assets.rect("paper"));
 
     hud::hud(g);
     hud::quickbar(g);
