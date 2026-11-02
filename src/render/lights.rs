@@ -43,9 +43,9 @@ pub(super) fn draw_lights(a: &Assets, world: &World, cam: &Cam, t: f32, glow: f3
             }
             Kind::Smelter if e.active => light(a, cam, px(64.0, 104.0), 2.6, theme::rgba(1.0, 0.5, 0.2, (0.3 + glow * 0.7) * flick)),
             Kind::Generator if e.active => light(a, cam, px(42.0, 108.0), 2.0, theme::rgba(1.0, 0.7, 0.35, 0.15 + glow * 0.5)),
-            Kind::Lab if e.active => light(a, cam, px(95.0, 92.0), 3.0, theme::rgba(0.5, 0.95, 0.9, 0.25 + glow * 0.6)),
-            Kind::Assembler if e.active => light(a, cam, px(97.0, 68.0), 1.8, theme::rgba(0.9, 0.8, 0.5, glow * 0.5)),
-            Kind::Sentry if e.active => light(a, cam, px(64.0, 46.0), 1.6, theme::rgba(1.0, 0.85, 0.5, 0.5 * flick)),
+            Kind::Lab if e.active => light(a, cam, px(96.0, 82.0), 3.0, theme::rgba(0.5, 0.95, 0.9, 0.25 + glow * 0.6)),
+            Kind::Assembler if e.active => light(a, cam, px(94.0, 75.0), 1.8, theme::rgba(0.9, 0.8, 0.5, glow * 0.5)),
+            Kind::Sentry if e.active => light(a, cam, px(63.0, 42.0), 1.6, theme::rgba(1.0, 0.85, 0.5, 0.5 * flick)),
             Kind::GrandEngine => light(a, cam, px(128.0, 97.0), 5.0, theme::rgba(0.75, 0.5, 1.0, 0.3 + glow * 0.6)),
             Kind::Hive => light(a, cam, px(96.0, 96.0), 3.0, theme::rgba(0.95, 0.4, 0.7, 0.15 + glow * 0.45)),
             _ => {}

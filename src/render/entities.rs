@@ -364,7 +364,7 @@ fn draw_entity(a: &Assets, e: &Entity, cam: &Cam, t: f32) {
         }
         State::Sentry { aim, .. } => {
             draw_kind(a, e.kind, e.dir, s0, z, WHITE);
-            a.draw_centered("sentry_head", at(64.0, 46.0), Vec2::splat(88.0 * k), *aim, WHITE);
+            a.draw_centered("sentry_head", at(63.0, 42.0), Vec2::splat(88.0 * k), *aim, WHITE);
             return;
         }
         _ => {}
@@ -384,16 +384,16 @@ fn draw_entity(a: &Assets, e: &Entity, cam: &Cam, t: f32) {
     }
     draw_kind(a, e.kind, e.dir, s0, z, WHITE);
     match e.kind {
-        Kind::Drill => a.draw_centered("drill_bit", at(63.0, 47.0), Vec2::splat(44.0 * k), spin(5.0), WHITE),
+        Kind::Drill => a.draw_centered("drill_bit", at(63.0, 50.0), Vec2::splat(56.0 * k), spin(5.0), WHITE),
         Kind::Smelter if e.active => {
             let breathe = 0.925 + 0.075 * (t * 1.1 + e.pos.x as f32 * 2.3).sin();
             a.draw_centered("glow", at(64.0, 104.0), vec2(70.0, 40.0) * k, 0.0, theme::rgba(1.0, 0.55, 0.2, 0.75 * breathe));
         }
-        Kind::Assembler => a.draw_centered("assembler_gear", at(97.0, 68.0), Vec2::splat(80.0 * k), spin(1.6), WHITE),
+        Kind::Assembler => a.draw_centered("assembler_gear", at(94.0, 75.0), Vec2::splat(88.0 * k), spin(1.6), WHITE),
         Kind::Lab => {
             let pulse = if e.active { 1.0 + 0.1 * (t * 4.0).sin() } else { 0.75 };
             let tint = if e.active { WHITE } else { theme::rgba(0.7, 0.75, 0.75, 0.6) };
-            a.draw_centered("lab_orb", at(95.0, 92.0), Vec2::splat(64.0 * k * pulse), 0.0, tint);
+            a.draw_centered("lab_orb", at(96.0, 82.0), Vec2::splat(70.0 * k * pulse), 0.0, tint);
         }
         Kind::Generator => a.draw_centered("generator_wheel", at(87.0, 63.0), Vec2::splat(44.0 * k), spin(6.0), WHITE),
         Kind::Wellhead => {
