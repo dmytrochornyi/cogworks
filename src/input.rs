@@ -213,6 +213,10 @@ impl Game {
         if is_key_pressed(KeyCode::H) || is_key_pressed(KeyCode::F1) {
             self.show_help = !self.show_help;
         }
+        if is_key_pressed(KeyCode::V) {
+            self.look = self.look.next();
+            self.toast(format!("Look: {}", self.look.name()));
+        }
         if is_key_pressed(KeyCode::O) {
             self.show_pollution = !self.show_pollution;
         }

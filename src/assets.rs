@@ -24,6 +24,10 @@ pub struct Assets {
     /// Ore fields: cuts each tile's edge from which neighbours are the same ore,
     /// so a deposit reads as one continuous patch (see `ORE_FIELD`).
     pub ore_field: Material,
+    /// Keeps only the bright parts of the graded frame, for the bloom buffer.
+    pub bright: Material,
+    /// The final screen pass: bloom, ink, halftone, grain, motion blur (see `render::post`).
+    pub post: Material,
 }
 
 impl Assets {
@@ -124,7 +128,27 @@ impl Assets {
         )
         .expect("ore field shader");
 
-        Assets { atlas, rects, font, font_bold, composite, additive, ore_field }
+        let bright = load_material(
+            ShaderSource::Glsl { vertex: VERTEX, fragment: BRIGHT },
+            MaterialParams { uniforms: vec![UniformDesc::new("Src", UniformType::Float2)], ..Default::default() },
+        )
+        .expect("bright-pass shader");
+        let post = load_material(
+            ShaderSource::Glsl { vertex: VERTEX, fragment: POST },
+            MaterialParams {
+                uniforms: vec![
+                    UniformDesc::new("Screen", UniformType::Float4),
+                    UniformDesc::new("LookA", UniformType::Float4),
+                    UniformDesc::new("LookB", UniformType::Float4),
+                    UniformDesc::new("Blur", UniformType::Float4),
+                ],
+                textures: vec!["Bloom".to_string()],
+                ..Default::default()
+            },
+        )
+        .expect("post shader");
+
+        Assets { atlas, rects, font, font_bold, composite, additive, ore_field, bright, post }
     }
 
     pub fn rect(&self, name: &str) -> Rect {
@@ -397,5 +421,150 @@ void main() {
     vec2 d = uv - 0.5;
     col *= 1.0 - dot(d, d) * Params.z;
     gl_FragColor = vec4(col, 1.0);
+}
+"#;
+
+/// Bloom bright pass: a 4-tap box filter (the bloom buffer is a quarter of the
+/// screen) that keeps only light above a soft threshold.
+const BRIGHT: &str = r#"#version 100
+#ifdef GL_FRAGMENT_PRECISION_HIGH
+precision highp float;
+#else
+precision mediump float;
+#endif
+varying lowp vec2 uv;
+uniform sampler2D Texture;
+uniform vec2 Src; // source size in pixels
+void main() {
+    vec2 t = 1.0 / Src;
+    vec3 c = texture2D(Texture, uv + vec2(-t.x, -t.y)).rgb
+           + texture2D(Texture, uv + vec2( t.x, -t.y)).rgb
+           + texture2D(Texture, uv + vec2(-t.x,  t.y)).rgb
+           + texture2D(Texture, uv + vec2( t.x,  t.y)).rgb;
+    c *= 0.25;
+    float l = dot(c, vec3(0.299, 0.587, 0.114));
+    gl_FragColor = vec4(c * smoothstep(0.70, 1.0, l), 1.0);
+}
+"#;
+
+/// Final screen pass (see `render::post`). The graded frame is stored upside
+/// down, so screen-space vectors arrive with y already flipped.
+const POST: &str = r#"#version 100
+#ifdef GL_FRAGMENT_PRECISION_HIGH
+precision highp float;
+#else
+precision mediump float;
+#endif
+varying lowp vec2 uv;
+uniform sampler2D Texture; // graded frame
+uniform sampler2D Bloom;   // quarter-size bright pass
+uniform vec4 Screen; // width, height, time, unused
+uniform vec4 LookA;  // ink, halftone, grain, chroma
+uniform vec4 LookB;  // bloom, paper, posterize, unused
+uniform vec4 Blur;   // streak (uv), focus centre (uv)
+
+float hash(vec2 p) {
+    p = fract(p * vec2(443.897, 441.423));
+    p += dot(p, p.yx + 19.19);
+    return fract((p.x + p.y) * p.x);
+}
+float vnoise(vec2 p) {
+    vec2 i = floor(p);
+    vec2 f = fract(p);
+    f = f * f * (3.0 - 2.0 * f);
+    float a = hash(i), b = hash(i + vec2(1.0, 0.0));
+    float c = hash(i + vec2(0.0, 1.0)), d = hash(i + vec2(1.0, 1.0));
+    return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+}
+float luma(vec3 c) { return dot(c, vec3(0.299, 0.587, 0.114)); }
+
+// Colour plates printed slightly out of register: red nudged one way, blue
+// the other, more toward the screen edges.
+vec3 plates(vec2 p) {
+    vec2 px = 1.0 / Screen.xy;
+    vec2 off = ((p - 0.5) * 0.0035 + vec2(0.8, 0.4) * px) * LookA.w;
+    return vec3(texture2D(Texture, p + off).r, texture2D(Texture, p).g, texture2D(Texture, p - off).b);
+}
+
+void main() {
+    vec2 px = 1.0 / Screen.xy;
+    vec2 frag = uv * Screen.xy;
+
+    // ---- camera motion blur, faded out around the robot so it stays crisp ----
+    vec2 toFocus = (uv - Blur.zw) * Screen.xy;
+    float keep = smoothstep(40.0, 140.0, length(toFocus) / max(1.0, Screen.y / 900.0));
+    vec2 streak = Blur.xy * keep;
+    vec3 col;
+    if (dot(streak, streak) * Screen.x * Screen.x > 1.0) {
+        col = vec3(0.0);
+        for (int i = 0; i < 8; i++) {
+            float k = (float(i) + 0.5) / 8.0 - 0.5;
+            col += plates(uv + streak * k);
+        }
+        col /= 8.0;
+    } else {
+        col = plates(uv);
+    }
+
+    // ---- ink: dark lines where luminance changes sharply (Sobel) ----
+    if (LookA.x > 0.0) {
+        float tl = luma(texture2D(Texture, uv + px * vec2(-1.0, -1.0)).rgb);
+        float tc = luma(texture2D(Texture, uv + px * vec2( 0.0, -1.0)).rgb);
+        float tr = luma(texture2D(Texture, uv + px * vec2( 1.0, -1.0)).rgb);
+        float ml = luma(texture2D(Texture, uv + px * vec2(-1.0,  0.0)).rgb);
+        float mr = luma(texture2D(Texture, uv + px * vec2( 1.0,  0.0)).rgb);
+        float bl = luma(texture2D(Texture, uv + px * vec2(-1.0,  1.0)).rgb);
+        float bc = luma(texture2D(Texture, uv + px * vec2( 0.0,  1.0)).rgb);
+        float br = luma(texture2D(Texture, uv + px * vec2( 1.0,  1.0)).rgb);
+        float gx = (tr + 2.0 * mr + br) - (tl + 2.0 * ml + bl);
+        float gy = (bl + 2.0 * bc + br) - (tl + 2.0 * tc + tr);
+        float edge = smoothstep(0.32, 0.75, length(vec2(gx, gy)));
+        col = mix(col, col * vec3(0.30, 0.20, 0.24), edge * LookA.x * 0.75);
+    }
+
+    // ---- posterize toward a few printed tones ----
+    if (LookB.z > 0.0) {
+        vec3 q = floor(col * 6.0 + 0.5) / 6.0;
+        col = mix(col, q, LookB.z);
+    }
+
+    // ---- halftone dots in the shadows, on a 45-degree screen ----
+    if (LookA.y > 0.0) {
+        float cell = max(4.0, Screen.y / 190.0);
+        vec2 r = mat2(0.7071, -0.7071, 0.7071, 0.7071) * frag / cell;
+        float d = length(fract(r) - 0.5);
+        float dark = 1.0 - luma(col);
+        float rad = sqrt(clamp((dark - 0.42) * 1.6, 0.0, 1.0)) * 0.56;
+        float dotm = 1.0 - smoothstep(rad - 0.07, rad + 0.07, d);
+        col = mix(col, col * vec3(0.58, 0.52, 0.80), dotm * LookA.y);
+    }
+
+    // ---- bloom: a soft glow around bright things, screened on top ----
+    if (LookB.x > 0.0) {
+        vec2 bt = px * 4.0;
+        vec3 b = texture2D(Bloom, uv).rgb * 0.20;
+        b += (texture2D(Bloom, uv + bt * vec2( 2.0,  0.0)).rgb + texture2D(Bloom, uv + bt * vec2(-2.0,  0.0)).rgb
+            + texture2D(Bloom, uv + bt * vec2( 0.0,  2.0)).rgb + texture2D(Bloom, uv + bt * vec2( 0.0, -2.0)).rgb) * 0.12;
+        b += (texture2D(Bloom, uv + bt * vec2( 3.0,  3.0)).rgb + texture2D(Bloom, uv + bt * vec2(-3.0,  3.0)).rgb
+            + texture2D(Bloom, uv + bt * vec2( 3.0, -3.0)).rgb + texture2D(Bloom, uv + bt * vec2(-3.0, -3.0)).rgb) * 0.08;
+        b *= vec3(1.0, 0.9, 0.75) * LookB.x;
+        col = 1.0 - (1.0 - col) * (1.0 - clamp(b, 0.0, 1.0));
+    }
+
+    // ---- paper: a still, fibrous texture, as if painted on watercolour paper ----
+    if (LookB.y > 0.0) {
+        float n = vnoise(frag / 2.5) * 0.45 + vnoise(frag / 11.0) * 0.35 + vnoise(frag / 60.0) * 0.20;
+        col *= 1.0 + (n - 0.5) * 0.09 * LookB.y;
+    }
+
+    // ---- film grain, re-rolled 24 times a second, strongest in the midtones ----
+    if (LookA.z > 0.0) {
+        float f = floor(Screen.z * 24.0);
+        float g = hash(frag + vec2(f * 17.13, f * 7.31)) + hash(frag * 1.37 + vec2(f * 3.7, f * 11.9)) - 1.0;
+        float l = luma(col);
+        col += g * (0.05 + 0.10 * l * (1.0 - l)) * LookA.z;
+    }
+
+    gl_FragColor = vec4(clamp(col, 0.0, 1.0), 1.0);
 }
 "#;

@@ -6,7 +6,7 @@ use crate::assets::Assets;
 use crate::audio::Audio;
 use crate::input::Gesture;
 use crate::items::Item;
-use crate::render::{Cam, Renderer, sky};
+use crate::render::{Cam, Look, Renderer, sky};
 use crate::save;
 use crate::settings::Settings;
 use crate::ui;
@@ -57,6 +57,8 @@ pub struct Game {
     pub toasts: Vec<(String, f32)>,
     pub show_help: bool,
     pub show_pollution: bool,
+    /// Post-processing preset (V cycles it).
+    pub look: Look,
     pub paused: bool,
     /// Screen areas covered by UI last frame; clicks there don't reach the map.
     pub ui_rects: Vec<Rect>,
@@ -109,6 +111,7 @@ impl Game {
             toasts: Vec::new(),
             show_help: true,
             show_pollution: false,
+            look: Look::default(),
             paused: false,
             ui_rects: Vec::new(),
             clickables: Vec::new(),
@@ -280,7 +283,7 @@ impl Game {
     pub(crate) fn draw(&mut self) {
         clear_background(BLACK);
         let dt = get_frame_time().min(0.1);
-        self.renderer.frame(&self.assets, &self.world, &self.cam, self.time, dt, self.show_pollution);
+        self.renderer.frame(&self.assets, &self.world, &self.cam, self.time, dt, self.show_pollution, self.look);
         self.draw_cursor();
         ui::draw(self);
     }

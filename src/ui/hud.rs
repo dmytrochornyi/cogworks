@@ -170,7 +170,7 @@ const HELP_LINES: &[(&str, TextSize, Color)] = &[
     ("1–0 · quickbar      R · rotate      Q · copy building or empty hands      Esc · close", TextSize::M, TEXT),
     ("Left click · build (drag belts, pipes, walls) or open a building", TextSize::M, TEXT),
     ("Right hold · mine ore by hand, or pick a building back up", TextSize::M, TEXT),
-    ("F5 · save   F9 · load   O · pollution   P · peaceful   M · music   Space · pause", TextSize::M, TEXT),
+    ("F5 · save   F9 · load   O · pollution   V · look   P · peaceful   M · music   Space · pause", TextSize::M, TEXT),
     ("", TextSize::M, TEXT),
     ("Arms carry things from behind them to the front. Drills drop ore at their chute.", TextSize::M, TEXT),
     ("Belts have two lanes; feeding from the side fills the near one.", TextSize::M, TEXT),

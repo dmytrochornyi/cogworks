@@ -25,7 +25,7 @@ use std::rc::Rc;
 use macroquad::prelude::*;
 
 use assets::Assets;
-use render::DAY_LENGTH;
+use render::{DAY_LENGTH, Look};
 use world::{Kind, State, World};
 
 const TICK: f32 = 1.0 / 60.0;
@@ -105,6 +105,9 @@ async fn main() {
     // Dev aid: start the day at a chosen phase (0 = midnight, as in `sky_at_phase`).
     if let Some(p) = std::env::var("COGWORKS_DAY_PHASE").ok().and_then(|v| v.parse::<f32>().ok()) {
         game.world.time = DAY_LENGTH * (p.clamp(0.0, 1.0) + 0.7);
+    }
+    if let Some(l) = std::env::var("COGWORKS_LOOK").ok().and_then(|v| Look::parse(&v)) {
+        game.look = l;
     }
     // Dev aid: render a few seconds, write a screenshot and quit.
     let screenshot = std::env::var("COGWORKS_SCREENSHOT").ok();

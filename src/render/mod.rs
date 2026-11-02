@@ -15,6 +15,7 @@ mod lights;
 mod overlays;
 mod juice;
 mod particles;
+mod post;
 mod sky;
 
 use juice::Juice;
@@ -22,6 +23,7 @@ use juice::Juice;
 pub use camera::Cam;
 pub use entities::{draw_item, draw_item_tint, draw_world, VENTS};
 pub use overlays::draw_ghost;
+pub use post::Look;
 pub use sky::{DAY_LENGTH, sky};
 
 // Re-exported so `crate::render` keeps the same public API as before the
@@ -138,7 +140,15 @@ fn lantern_seed(pos: Vec2) -> f32 {
 pub struct Renderer {
     world_rt: Option<RenderTarget>,
     light_rt: Option<RenderTarget>,
+    /// The lit, colour-graded world before the post pass.
+    graded_rt: Option<RenderTarget>,
+    /// Quarter-size bright pass of `graded_rt`, blurred into bloom.
+    bloom_rt: Option<RenderTarget>,
     rt_size: (u32, u32),
+    /// Camera centre last frame, in screen pixels, for motion blur.
+    prev_view: Option<Vec2>,
+    /// Smoothed motion-blur streak in screen pixels.
+    streak: Vec2,
     particles: Vec<Particle>,
     rng: u64,
     /// Seconds until the next bird shadow crosses the view.
@@ -151,19 +161,21 @@ pub struct Renderer {
 
 impl Renderer {
     pub fn new() -> Self {
-        Renderer { world_rt: None, light_rt: None, rt_size: (0, 0), particles: Vec::new(), rng: 0x1234_5678, bird_timer: 6.0, player_foot_pairs: 0, juice: Juice::default() }
+        Renderer { world_rt: None, light_rt: None, graded_rt: None, bloom_rt: None, rt_size: (0, 0), prev_view: None, streak: Vec2::ZERO, particles: Vec::new(), rng: 0x1234_5678, bird_timer: 6.0, player_foot_pairs: 0, juice: Juice::default() }
     }
 
     fn ensure_targets(&mut self) {
         let size = (screen_width().max(1.0) as u32, screen_height().max(1.0) as u32);
         if self.rt_size != size || self.world_rt.is_none() {
-            let make = || {
-                let rt = render_target(size.0, size.1);
+            let make = |w: u32, h: u32| {
+                let rt = render_target(w, h);
                 rt.texture.set_filter(FilterMode::Linear);
                 rt
             };
-            self.world_rt = Some(make());
-            self.light_rt = Some(make());
+            self.world_rt = Some(make(size.0, size.1));
+            self.light_rt = Some(make(size.0, size.1));
+            self.graded_rt = Some(make(size.0, size.1));
+            self.bloom_rt = Some(make((size.0 / 4).max(1), (size.1 / 4).max(1)));
             self.rt_size = size;
         }
     }
@@ -220,7 +232,8 @@ impl Renderer {
         }
     }
 
-    pub fn frame(&mut self, a: &Assets, world: &World, cam: &Cam, t: f32, dt: f32, show_pollution: bool) {
+    #[allow(clippy::too_many_arguments)]
+    pub fn frame(&mut self, a: &Assets, world: &World, cam: &Cam, t: f32, dt: f32, show_pollution: bool, look: Look) {
         self.ensure_targets();
         let sky = sky(world.time);
         self.update_particles(world, cam, dt, sky.night);
@@ -255,7 +268,12 @@ impl Renderer {
         }
         gl_use_default_material();
 
-        set_default_camera();
+        // Composite into the graded buffer with the same flip as drawing to
+        // the screen, so it ends up stored like the world buffer.
+        let graded_rt = self.graded_rt.clone().unwrap();
+        let mut graded_cam = Camera2D::from_display_rect(Rect::new(0.0, 0.0, w, h));
+        graded_cam.render_target = Some(graded_rt.clone());
+        set_camera(&graded_cam);
         a.composite.set_texture("Light", light_rt.texture.clone());
         a.composite.set_uniform("Params", vec4(0.0, 0.0, 0.55, 0.35));
         a.composite.set_uniform("Tint", vec4(sky.tint.r, sky.tint.g, sky.tint.b, sky.tint.a));
@@ -266,6 +284,53 @@ impl Renderer {
         // framebuffer, so flip the composited world back upright. Without this,
         // the world (and thus movement) appears vertically inverted.
         draw_texture_ex(&world_rt.texture, 0.0, 0.0, WHITE, DrawTextureParams {
+            dest_size: Some(vec2(w, h)),
+            flip_y: true,
+            ..Default::default()
+        });
+        gl_use_default_material();
+        self.post(a, cam, world.player.draw_pos, t, look);
+    }
+
+    /// Bright pass into the bloom buffer, then the final post pass to the screen.
+    fn post(&mut self, a: &Assets, cam: &Cam, player: Vec2, t: f32, look: Look) {
+        let (w, h) = (self.rt_size.0 as f32, self.rt_size.1 as f32);
+        let p = look.params();
+        let graded_rt = self.graded_rt.clone().unwrap();
+        let bloom_rt = self.bloom_rt.clone().unwrap();
+
+        // Motion blur follows how far the view slid since last frame.
+        let view = cam.pos * cam.zoom;
+        let delta = self.prev_view.map_or(Vec2::ZERO, |v| view - v);
+        self.prev_view = Some(view);
+        let target = post::blur_streak(delta, p.motion);
+        self.streak = if target == Vec2::ZERO && delta.length() > 200.0 { Vec2::ZERO } else { self.streak.lerp(target, 0.5) };
+
+        if p.bloom > 0.0 {
+            let (bw, bh) = (bloom_rt.texture.width(), bloom_rt.texture.height());
+            let mut bcam = Camera2D::from_display_rect(Rect::new(0.0, 0.0, bw, bh));
+            bcam.render_target = Some(bloom_rt.clone());
+            set_camera(&bcam);
+            a.bright.set_uniform("Src", vec2(w, h));
+            gl_use_material(&a.bright);
+            draw_texture_ex(&graded_rt.texture, 0.0, 0.0, WHITE, DrawTextureParams {
+                dest_size: Some(vec2(bw, bh)),
+                flip_y: true,
+                ..Default::default()
+            });
+            gl_use_default_material();
+        }
+
+        set_default_camera();
+        // The graded buffer is stored upside down: flip screen-space y.
+        let focus = cam.w2s(player - vec2(0.0, 0.3));
+        a.post.set_texture("Bloom", bloom_rt.texture.clone());
+        a.post.set_uniform("Screen", vec4(w, h, t, 0.0));
+        a.post.set_uniform("LookA", vec4(p.ink, p.halftone, p.grain, p.chroma));
+        a.post.set_uniform("LookB", vec4(p.bloom, p.paper, p.posterize, 0.0));
+        a.post.set_uniform("Blur", vec4(self.streak.x / w, -self.streak.y / h, focus.x / w, 1.0 - focus.y / h));
+        gl_use_material(&a.post);
+        draw_texture_ex(&graded_rt.texture, 0.0, 0.0, WHITE, DrawTextureParams {
             dest_size: Some(vec2(screen_width(), screen_height())),
             flip_y: true,
             ..Default::default()
