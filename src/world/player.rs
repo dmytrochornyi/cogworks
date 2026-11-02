@@ -309,6 +309,7 @@ impl World {
         let progress = progress + dt / MINE_TIME;
         if progress >= 1.0 {
             self.player.inv.add(ore, 1);
+            self.fx.push(Fx::Mined { tile, item: ore });
             self.player.mining = Some((tile, 0.0));
         } else {
             self.player.mining = Some((tile, progress));

@@ -255,6 +255,17 @@ pub enum Sfx {
     Shot(Vec2),
 }
 
+/// Visual cues raised by the simulation, for the renderer to animate.
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum Fx {
+    /// A building was placed with its footprint's top-left at `pos`.
+    Built { pos: IVec2, size: IVec2 },
+    /// A building was picked up from this footprint.
+    Removed { pos: IVec2, size: IVec2 },
+    /// One `item` was hand-mined from the ore at `tile`.
+    Mined { tile: IVec2, item: Item },
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub enum Resource {
     Ore(Item),
@@ -388,6 +399,8 @@ pub struct World {
     pub events: Vec<String>,
     #[serde(skip)]
     pub sounds: Vec<Sfx>,
+    #[serde(skip)]
+    pub fx: Vec<Fx>,
     #[serde(skip)]
     pub power: Power,
     #[serde(skip)]

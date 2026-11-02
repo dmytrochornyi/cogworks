@@ -9,7 +9,7 @@ use crate::items::Item;
 use crate::render::{Cam, Renderer, sky};
 use crate::save;
 use crate::ui;
-use crate::world::{Dir, Sfx, World};
+use crate::world::{Dir, Fx, Sfx, World};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Panel {
@@ -147,6 +147,8 @@ impl Game {
         if is_mouse_button_pressed(MouseButton::Left) && self.mouse_over_ui() {
             self.audio.sfx("click", 0.5);
         }
+        let fx: Vec<Fx> = self.world.fx.drain(..).collect();
+        self.renderer.effects(&fx);
         let sounds: Vec<Sfx> = self.world.sounds.drain(..).collect();
         for s in sounds {
             match s {

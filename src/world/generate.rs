@@ -26,6 +26,7 @@ impl World {
             rng: Rng(seed.rotate_left(17) | 1),
             events: Vec::new(),
             sounds: Vec::new(),
+            fx: Vec::new(),
             power: Power::default(),
             fluids: FluidNets::default(),
             shots: Vec::new(),

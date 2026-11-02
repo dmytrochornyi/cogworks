@@ -10,11 +10,12 @@ use crate::world::*;
 
 use super::actors::{draw_enemy, draw_player};
 use super::camera::Cam;
+use super::juice::Juice;
 use super::ground::draw_ground;
 use super::overlays::draw_wires;
 use super::{BADGE, HONEY, INK, PX, SAGE, TERRA, angle, lantern_seed, rgba, sway, world_bar};
 
-fn item_key(item: Item) -> Option<&'static str> {
+pub(super) fn item_key(item: Item) -> Option<&'static str> {
     Some(match item {
         Item::IronOre => "item_iron_ore",
         Item::CopperOre => "item_copper_ore",
@@ -217,7 +218,7 @@ enum Drawable<'a> {
     Enemy(&'a Enemy),
 }
 
-pub fn draw_world(a: &Assets, world: &World, cam: &Cam, t: f32) {
+pub fn draw_world(a: &Assets, world: &World, cam: &Cam, t: f32, juice: &Juice) {
     let (lo, hi) = cam.visible();
     let z = cam.zoom;
     let k = z / PX;
@@ -296,7 +297,19 @@ pub fn draw_world(a: &Assets, world: &World, cam: &Cam, t: f32) {
     stand.sort_by(|x, y| x.0.total_cmp(&y.0));
     for (_, d) in &stand {
         match d {
-            Drawable::Entity(e) => draw_entity(a, e, cam, t),
+            Drawable::Entity(e) => {
+                // A building still popping in is drawn through a camera zoomed
+                // about its base, so every part of it scales together.
+                let s = juice.scale_at(e.pos);
+                if s == 1.0 {
+                    draw_entity(a, e, cam, t);
+                } else {
+                    let d = e.dims().as_vec2();
+                    let base = e.pos.as_vec2() + vec2(d.x * 0.5, d.y);
+                    let popped = Cam { pos: base - (base - cam.pos) / s, zoom: cam.zoom * s };
+                    draw_entity(a, e, &popped, t);
+                }
+            }
             Drawable::Enemy(en) => draw_enemy(a, en, cam),
             Drawable::Player => draw_player(a, &world.player, cam, t),
         }
@@ -434,17 +447,17 @@ fn draw_lantern(a: &Assets, s0: Vec2, k: f32, rotation: f32, tint: Color) {
 }
 
 /// Steam vent point per machine, in sprite pixels from the sprite's top-left.
-/// Each matches the brass vent painted into the corresponding sprite in
-/// `gen_assets`. Drives the steam puffs that rise from active machines.
+/// Each sits on the chimney, stack or open top of the machine's sprite in
+/// `assets/art`. Drives the steam puffs that rise from active machines.
 pub const VENTS: &[(Kind, Vec2)] = &[
-    (Kind::Smelter, Vec2::new(97.0, 6.0)),
-    (Kind::Assembler, Vec2::new(154.0, 24.0)),
-    (Kind::Lab, Vec2::new(150.0, 32.0)),
-    (Kind::Generator, Vec2::new(31.0, 20.0)),
-    (Kind::Refinery, Vec2::new(58.0, 36.0)),
-    (Kind::Mixer, Vec2::new(94.0, 24.0)),
-    (Kind::Drill, Vec2::new(96.0, 22.0)),
-    (Kind::Wellhead, Vec2::new(46.0, 24.0)),
+    (Kind::Smelter, Vec2::new(44.0, 8.0)),
+    (Kind::Assembler, Vec2::new(22.0, 12.0)),
+    (Kind::Lab, Vec2::new(160.0, 20.0)),
+    (Kind::Generator, Vec2::new(34.0, 8.0)),
+    (Kind::Refinery, Vec2::new(62.0, 20.0)),
+    (Kind::Mixer, Vec2::new(64.0, 28.0)),
+    (Kind::Drill, Vec2::new(100.0, 18.0)),
+    (Kind::Wellhead, Vec2::new(64.0, 22.0)),
     (Kind::GrandEngine, Vec2::new(128.0, 22.0)),
 ];
 

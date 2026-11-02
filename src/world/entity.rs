@@ -141,6 +141,8 @@ impl World {
         self.player.inv.take(item, 1);
         let id = self.spawn_entity(kind, pos, dir);
         self.sounds.push(Sfx::Place);
+        let e = self.entity(id);
+        self.fx.push(Fx::Built { pos: e.pos, size: e.dims() });
         if kind == Kind::Tunnel {
             self.pair_tunnel(id);
         }
@@ -152,6 +154,7 @@ impl World {
         let id = self.entity_at(pos)?;
         let kind = self.entity(id).kind;
         let item = kind.item()?;
+        let (epos, esize) = (self.entity(id).pos, self.entity(id).dims());
         let contents = self.contents(id);
         for (i, n) in contents.iter() {
             self.player.inv.add(i, n);
@@ -166,6 +169,7 @@ impl World {
         self.player.inv.add(item, 1);
         self.delete(id);
         self.sounds.push(Sfx::Pickup);
+        self.fx.push(Fx::Removed { pos: epos, size: esize });
         Some(kind)
     }
 

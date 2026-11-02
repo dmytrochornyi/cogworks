@@ -13,8 +13,11 @@ mod entities;
 mod ground;
 mod lights;
 mod overlays;
+mod juice;
 mod particles;
 mod sky;
+
+use juice::Juice;
 
 pub use camera::Cam;
 pub use entities::{draw_item, draw_item_tint, draw_world, VENTS};
@@ -116,11 +119,13 @@ pub struct Renderer {
     bird_timer: f32,
     /// Footfall pairs seen so far, so a dust puff fires once per pair.
     player_foot_pairs: u64,
+    /// Feedback for the player's own actions (placing, mining).
+    juice: Juice,
 }
 
 impl Renderer {
     pub fn new() -> Self {
-        Renderer { world_rt: None, light_rt: None, rt_size: (0, 0), particles: Vec::new(), rng: 0x1234_5678, bird_timer: 6.0, player_foot_pairs: 0 }
+        Renderer { world_rt: None, light_rt: None, rt_size: (0, 0), particles: Vec::new(), rng: 0x1234_5678, bird_timer: 6.0, player_foot_pairs: 0, juice: Juice::default() }
     }
 
     fn ensure_targets(&mut self) {
@@ -172,6 +177,23 @@ impl Renderer {
     }
 
     /// Renders the lit, graded world to the screen.
+    /// Starts the animations for this frame's simulation events.
+    pub fn effects(&mut self, fx: &[Fx]) {
+        for &f in fx {
+            match f {
+                Fx::Built { pos, size } | Fx::Removed { pos, size } => {
+                    let s = size.as_vec2();
+                    let n = (6.0 + (s.x + s.y) * 2.0) as usize;
+                    particles::dust_ring(&mut self.rng, &mut self.particles, pos.as_vec2() + s * 0.5, s * 0.5, n);
+                    if matches!(f, Fx::Built { .. }) {
+                        self.juice.built(pos);
+                    }
+                }
+                Fx::Mined { tile, item } => self.juice.mined(&mut self.rng, tile, item),
+            }
+        }
+    }
+
     pub fn frame(&mut self, a: &Assets, world: &World, cam: &Cam, t: f32, dt: f32, show_pollution: bool) {
         self.ensure_targets();
         let sky = sky(world.time);
@@ -184,8 +206,10 @@ impl Renderer {
         rt_cam.render_target = Some(world_rt.clone());
         set_camera(&rt_cam);
         clear_background(theme::color(theme::WORLD_CLEAR));
-        draw_world(a, world, cam, t);
+        self.juice.update(dt);
+        draw_world(a, world, cam, t, &self.juice);
         self.draw_particles(a, cam, t);
+        self.juice.draw(a, cam, world.player.pos);
         draw_clouds(a, cam, world.time, 1.0 - sky.night);
         if show_pollution {
             draw_pollution(world, cam);

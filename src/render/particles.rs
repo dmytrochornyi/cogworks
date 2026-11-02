@@ -46,7 +46,7 @@ pub(super) struct Particle {
 
 /// xorshift64* in 0..1, shared by the renderer and the pure spawn function so
 /// the particle system stays deterministic and testable.
-fn rand01(rng: &mut u64) -> f32 {
+pub(super) fn rand01(rng: &mut u64) -> f32 {
     *rng ^= *rng << 13;
     *rng ^= *rng >> 7;
     *rng ^= *rng << 17;
@@ -123,6 +123,25 @@ pub(super) fn advance_particles(particles: &mut Vec<Particle>, dt: f32) {
         }
     }
     particles.retain(|p| p.life > 0.0);
+}
+
+/// A ring of dust kicked up around a footprint, for buildings being placed or
+/// picked up. `n` puffs spread evenly round the edge, pushed outward.
+pub(super) fn dust_ring(rng: &mut u64, particles: &mut Vec<Particle>, center: Vec2, radius: Vec2, n: usize) {
+    for i in 0..n {
+        let (r1, r2) = (rand01(rng), rand01(rng));
+        let ang = (i as f32 + r1 * 0.6) / n as f32 * TAU;
+        let dir = Vec2::from_angle(ang);
+        particles.push(Particle {
+            pos: center + dir * radius,
+            vel: dir * (1.2 + r2 * 1.2),
+            life: 0.55 + r2 * 0.25,
+            max: 0.8,
+            size: 0.35 + r1 * 0.2,
+            kind: PKind::Dust,
+            seed: r1 * TAU,
+        });
+    }
 }
 
 /// Spawns this frame's particles, keeping every kind under its cap. Pure.
