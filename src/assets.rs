@@ -443,7 +443,7 @@ void main() {
            + texture2D(Texture, uv + vec2( t.x,  t.y)).rgb;
     c *= 0.25;
     float l = dot(c, vec3(0.299, 0.587, 0.114));
-    gl_FragColor = vec4(c * smoothstep(0.70, 1.0, l), 1.0);
+    gl_FragColor = vec4(c * smoothstep(0.80, 1.05, l), 1.0);
 }
 "#;
 

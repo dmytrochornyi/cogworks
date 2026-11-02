@@ -58,7 +58,7 @@ impl Look {
         match self {
             Look::Storybook => LookParams {
                 ink: 0.45,
-                halftone: 0.22,
+                halftone: 0.15,
                 chroma: 0.25,
                 bloom: 0.6,
                 posterize: 0.0,
