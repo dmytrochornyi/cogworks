@@ -1,3 +1,6 @@
+// Release builds on Windows open no console window behind the game.
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
 mod assets;
 mod assets_list;
 mod audio;

@@ -50,7 +50,13 @@ sprites, sounds and the font are all embedded in a single executable.
 - **Atmosphere**: a day-to-dusk cycle with real-time lighting, a lo-fi radio, ambience and foley
 - **Quality of life**: quickbar binding, building copy (Q), minimap, save/load and autosave
 
-## Getting started
+## Download
+
+Grab the latest build for Windows, Linux or macOS from the
+[**Releases page**](https://github.com/dmytrochornyi/cogworks/releases),
+unpack it and run `cogworks`. Everything is built into that one file.
+
+## Building from source
 
 You need a recent stable Rust toolchain (edition 2024, Rust 1.85 or newer).
 
