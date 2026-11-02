@@ -10,13 +10,24 @@ use crate::world::*;
 
 use super::metrics::{ui_height, ui_mouse, ui_width};
 use super::primitives::{Elevation, circle, circle_lines, rrect, rrect_lines, surface};
-use super::style::{BG, EDGE, KEY, LINE, PEACH, TEXT, TEXT_DIM, TITLE};
+use super::style::{BG, EDGE, KEY, LINE, PEACH, SLOT_WELL, TEXT, TEXT_DIM, TITLE};
 use super::text::{text, text_in, text_w};
 
-/// A hover tooltip: plain text lines, or a structured recipe card.
+/// A hover tooltip: an info card, or a structured recipe card.
 pub enum Tip {
-    Lines(Vec<String>),
+    /// A title (the first row) with an icon beside it, then detail rows, each
+    /// with its own item icon when it is about one.
+    Card { icon: Option<Item>, rows: Vec<(Option<Item>, String)> },
     Recipe(usize),
+}
+
+impl Tip {
+    /// A card for one item: its icon and name, then plain detail lines.
+    pub fn item(item: Item, details: &[&str]) -> Tip {
+        let mut rows = vec![(None, item.name().to_string())];
+        rows.extend(details.iter().map(|d| (None, d.to_string())));
+        Tip::Card { icon: Some(item), rows }
+    }
 }
 
 /// How an ingredient's requirement stands against the backpack and the workbench.
@@ -87,25 +98,60 @@ pub fn recipe_card(world: &World, recipe: usize) -> (Vec<CardRow>, Vec<(OutputKi
 pub(super) fn draw_tooltip(a: &Assets, world: &World, tip: &Option<Tip>) {
     match tip {
         None => {}
-        Some(Tip::Lines(lines)) => draw_lines_tooltip(a, lines),
+        Some(Tip::Card { icon, rows }) => draw_card(a, *icon, rows),
         Some(Tip::Recipe(r)) => draw_recipe_card(a, world, *r),
     }
 }
 
-fn draw_lines_tooltip(a: &Assets, lines: &[String]) {
-    if lines.is_empty() {
+/// Info card: a header row with a framed icon and the title, a hairline, then
+/// one row per detail line (with a small icon where the row is about an item).
+fn draw_card(a: &Assets, icon: Option<Item>, rows: &[(Option<Item>, String)]) {
+    let Some(((_, title), body)) = rows.split_first() else {
+        return;
+    };
+    let pad = space::M;
+    let icon_box = 30.0;
+    let head_h = if icon.is_some() { icon_box } else { LINE };
+    let row_h = 22.0;
+    let row_icon = 18.0;
+    let title_x = if icon.is_some() { icon_box + space::S } else { 0.0 };
+    let head_w = title_x + text_w(a, title, TextSize::M);
+    let body_w = body
+        .iter()
+        .map(|(i, l)| if i.is_some() { row_icon + space::XS } else { 0.0 } + text_w(a, l, TextSize::S))
+        .fold(0.0, f32::max);
+    let w = head_w.max(body_w).max(120.0) + 2.0 * pad;
+    let h = pad + head_h + if body.is_empty() { 0.0 } else { space::S + 1.0 + space::XS + body.len() as f32 * row_h } + pad;
+
+    let m = ui_mouse();
+    let x = (m.x + 18.0).min(ui_width() - w - space::S).max(space::S);
+    let y = (m.y + 18.0).min(ui_height() - h - space::S).max(space::S);
+    let r = Rect::new(x, y, w, h);
+    surface(r, Elevation::Tooltip);
+
+    let (cx, mut cy) = (x + pad, y + pad);
+    if let Some(i) = icon {
+        let b = Rect::new(cx, cy, icon_box, icon_box);
+        rrect(b, radius::SM, SLOT_WELL);
+        rrect_lines(b, radius::SM, line::HAIR, EDGE);
+        draw_item(a, b.center(), icon_box - 6.0, i);
+    }
+    text(a, title, cx + title_x, cy + (head_h - LINE) / 2.0, TextSize::M, TITLE);
+    cy += head_h;
+    if body.is_empty() {
         return;
     }
-    let width = lines.iter().map(|l| text_w(a, l, TextSize::M)).fold(0.0, f32::max);
-    let m = ui_mouse();
-    let h = lines.len() as f32 * LINE + space::L;
-    let x = (m.x + 18.0).min(ui_width() - width - 2.0 * space::L - space::S).max(space::S);
-    let y = (m.y + 18.0).min(ui_height() - h - space::S).max(space::S);
-    let r = Rect::new(x, y, width + 2.0 * space::L, h);
-    surface(r, Elevation::Tooltip);
-    for (k, l) in lines.iter().enumerate() {
-        let col = if k == 0 { TITLE } else { TEXT };
-        text(a, l, x + space::L, y + space::S + k as f32 * LINE, TextSize::M, col);
+    cy += space::S;
+    draw_line(cx, cy, r.right() - pad, cy, line::HAIR, theme::alpha(theme::EDGE, 0.6));
+    cy += 1.0 + space::XS;
+    for (i, l) in body {
+        let mut tx = cx;
+        if let Some(i) = i {
+            draw_item(a, vec2(cx + row_icon / 2.0, cy + row_h / 2.0), row_icon, *i);
+            tx += row_icon + space::XS;
+        }
+        text(a, l, tx, cy + (row_h - 18.0) / 2.0, TextSize::S, TEXT);
+        cy += row_h;
     }
 }
 

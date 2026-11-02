@@ -184,7 +184,7 @@ pub(crate) fn building_panel(g: &mut Game, id: usize) {
                 let sr = grid_rect(vec2(x, y), k, cols, SLOT);
                 slot(&a, sr, Some(item), Some(n), false, false, &mut g.clickables);
                 if hovered(sr) {
-                    g.tooltip = Some(Tip::Lines(vec![item.name().to_string(), "Click to take".into()]));
+                    g.tooltip = Some(Tip::item(item, &[&format!("{n} stored"), "Click to take"]));
                 }
                 if clicked(sr) {
                     take = Some((item, n));

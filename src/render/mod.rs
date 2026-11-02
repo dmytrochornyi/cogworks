@@ -118,6 +118,18 @@ pub fn wind(t: f32, x: f32, y: f32) -> f32 {
     (flutter + lean) * 0.5
 }
 
+/// Sway of a tree at (x, y), in -1..1-ish (positive = toward +x). Trees are
+/// heavy, so they only follow the slow part of [`wind`]: the gust fronts that
+/// roll across the map plus a slow breathing sway, without the quick flutter
+/// that suits grass but makes a whole tree twitch.
+pub fn tree_wind(t: f32, x: f32, y: f32) -> f32 {
+    let phase = (x * 0.09 + y * 0.03 - t * 0.55).rem_euclid(1.0);
+    let gust = (1.0 - (phase - 0.5).abs() * 4.0).clamp(0.0, 1.0);
+    let gust = gust * gust * (3.0 - 2.0 * gust);
+    let breathe = (t * 0.9 + x * 0.61 + y * 0.37).sin() * 0.3;
+    gust * 0.7 + breathe
+}
+
 /// Per-pole phase so neighbouring lanterns don't swing in lockstep.
 fn lantern_seed(pos: Vec2) -> f32 {
     pos.x * 1.7 + pos.y * 0.9
@@ -182,7 +194,7 @@ impl Renderer {
         if world.player.alive() {
             let pairs = walk_footfalls(world.player.stride) / 2;
             if pairs > self.player_foot_pairs {
-                footfalls.push(world.player.pos + vec2(0.0, 0.25));
+                footfalls.push(world.player.draw_pos + vec2(0.0, 0.25));
             }
             self.player_foot_pairs = pairs;
         }
@@ -224,7 +236,7 @@ impl Renderer {
         self.juice.face(world.player.vel);
         draw_world(a, world, cam, t, &self.juice);
         self.draw_particles(a, cam, t);
-        self.juice.draw(a, cam, world.player.pos);
+        self.juice.draw(a, cam, world.player.draw_pos);
         draw_clouds(a, cam, world.time, 1.0 - sky.night);
         if show_pollution {
             draw_pollution(world, cam);

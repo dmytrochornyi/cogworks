@@ -10,7 +10,7 @@ use crate::theme::{self, TextSize, line, radius, space};
 use crate::Game;
 
 use super::primitives::{Elevation, circle, circle_lines, clicked, hovered, rrect, rrect_lines, surface};
-use super::style::{BG, BG2, EDGE, HEADER, KEY, SLOT_WELL, TEXT, TEXT_DIM};
+use super::style::{BG, BG2, EDGE, HEADER, HEADER_BAND, KEY, SLOT_WELL, TEXT, TEXT_DIM};
 use super::text::{text, text_in, text_w};
 
 pub(super) fn bar(r: Rect, frac: f32, col: Color) {
@@ -155,10 +155,12 @@ impl<'a> Panel<'a> {
         g.ui_rects.push(self.r);
         let a = g.assets.clone();
         let mut closed = false;
+        let band = Rect::new(self.r.x + 9.0, self.r.y + 9.0, self.r.w - 18.0, HEADER_BAND);
+        // Face of the band, above its 3 px shaded lip.
+        let band_mid = band.y + (band.h - 3.0) * 0.5;
         if let Some(t) = self.title {
             // A moss-green riveted header band across the top, like the
             // plaque on the logo, with the title in cream.
-            let band = Rect::new(self.r.x + 9.0, self.r.y + 9.0, self.r.w - 18.0, HEADER - 12.0);
             rrect(Rect::new(band.x - 1.5, band.y - 1.5, band.w + 3.0, band.h + 3.0), 6.0, theme::color(HEADER_INK));
             rrect(band, 5.0, theme::color(HEADER_MOSS_LO));
             rrect(Rect::new(band.x, band.y, band.w, band.h - 3.0), 5.0, theme::color(HEADER_MOSS));
@@ -167,7 +169,7 @@ impl<'a> Panel<'a> {
                 circle(vec2(x, band.center().y), 2.6, theme::color(HEADER_INK));
                 circle(vec2(x - 0.6, band.center().y - 0.6), 1.5, theme::color(HEADER_RIVET));
             }
-            let ty = band.y + (band.h - 3.0) * 0.5 - 15.0;
+            let ty = band_mid - 15.0;
             text(&a, t, self.r.x + space::XL + 1.0, ty + 2.0, TextSize::Xl, theme::alpha(HEADER_INK, 0.6));
             text(&a, t, self.r.x + space::XL, ty, TextSize::Xl, theme::color(HEADER_TEXT));
             if let Some(s) = self.subtitle {
@@ -178,10 +180,17 @@ impl<'a> Panel<'a> {
             text(&a, s, self.r.x + space::XL, self.r.y + space::L + 8.0, TextSize::S, TEXT_DIM);
         }
         if self.closable {
-            let cb = Rect::new(self.r.right() - space::L - 28.0, self.r.y + space::M, 28.0, 28.0);
+            // On a titled window the button sits centred in the band, just inside
+            // the right rivet, with the Esc hint level with it.
+            let cb = if self.title.is_some() {
+                Rect::new(band.right() - 18.0 - 28.0, band_mid - 14.0, 28.0, 28.0)
+            } else {
+                Rect::new(self.r.right() - space::L - 28.0, self.r.y + space::M, 28.0, 28.0)
+            };
             let hint = text_w(&a, "Esc", TextSize::Xs);
             let hint_col = if self.title.is_some() { theme::alpha(HEADER_TEXT, 0.85) } else { KEY };
-            text(&a, "Esc", cb.x - hint - space::S, self.r.y + space::L - 2.0, TextSize::Xs, hint_col);
+            let hint_y = if self.title.is_some() { cb.center().y - 7.5 } else { self.r.y + space::L - 2.0 };
+            text(&a, "Esc", cb.x - hint - space::S, hint_y, TextSize::Xs, hint_col);
             if button_kind(&a, cb, "x", true, ButtonKind::Secondary, &mut g.clickables) {
                 closed = true;
             }

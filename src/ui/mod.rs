@@ -40,7 +40,11 @@ pub fn draw(g: &mut Game) {
         OpenPanel::None => {}
     }
     if g.tooltip.is_none() && !g.mouse_over_ui() && g.tool.is_none() {
-        g.tooltip = Some(Tip::Lines(g.world.describe(g.mouse_tile())));
+        let tile = g.mouse_tile();
+        let rows = g.world.describe_rows(tile);
+        if !rows.is_empty() {
+            g.tooltip = Some(Tip::Card { icon: g.world.describe_icon(tile), rows });
+        }
     }
     let a = g.assets.clone();
     hud::radio(g, &a);

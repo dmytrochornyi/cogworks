@@ -77,7 +77,7 @@ pub(super) fn quickbar(g: &mut Game) {
         if hovered(r)
             && let Some(i) = item
         {
-            g.tooltip = Some(Tip::Lines(vec![i.name().to_string(), format!("Key {}", (k + 1) % 10)]));
+            g.tooltip = Some(Tip::item(i, &[&format!("Key {}", (k + 1) % 10)]));
         }
         if clicked(r) {
             g.select_slot(k);
@@ -103,7 +103,10 @@ pub(super) fn craft_queue(g: &mut Game) {
             bar(Rect::new(r.x + 5.0, r.bottom() - 8.0, r.w - 10.0, 4.0), c.progress / rec.time, HONEY);
         }
         if hovered(r) {
-            g.tooltip = Some(Tip::Lines(vec![rec.name.to_string()]));
+            g.tooltip = Some(match rec.main_output() {
+                Some(i) => Tip::item(i, &["Click to cancel"]),
+                None => Tip::Card { icon: None, rows: vec![(None, rec.name.to_string())] },
+            });
         }
         if clicked(r) {
             cancel = Some(k);

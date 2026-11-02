@@ -419,6 +419,7 @@ impl World {
     pub fn after_load(&mut self) {
         self.power.dirty = true;
         self.fluids.dirty = true;
+        self.player.snap();
     }
 
     pub fn res_at(&self, p: IVec2) -> Option<Resource> {

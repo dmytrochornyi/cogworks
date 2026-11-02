@@ -21,6 +21,9 @@ pub struct Assets {
     pub composite: Material,
     /// Plain textured drawing with additive blending, for lights.
     pub additive: Material,
+    /// Ore fields: cuts each tile's edge from which neighbours are the same ore,
+    /// so a deposit reads as one continuous patch (see `ORE_FIELD`).
+    pub ore_field: Material,
 }
 
 impl Assets {
@@ -105,7 +108,23 @@ impl Assets {
         )
         .expect("additive shader");
 
-        Assets { atlas, rects, font, font_bold, composite, additive }
+        let ore_field = load_material(
+            ShaderSource::Glsl { vertex: VERTEX_EXTRA, fragment: ORE_FIELD },
+            MaterialParams {
+                pipeline_params: PipelineParams {
+                    color_blend: Some(BlendState::new(
+                        Equation::Add,
+                        BlendFactor::Value(BlendValue::SourceAlpha),
+                        BlendFactor::OneMinusValue(BlendValue::SourceAlpha),
+                    )),
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+        )
+        .expect("ore field shader");
+
+        Assets { atlas, rects, font, font_bold, composite, additive, ore_field }
     }
 
     pub fn rect(&self, name: &str) -> Rect {
@@ -127,6 +146,39 @@ impl Assets {
     /// Draws a sprite centred on `center`, rotated around its centre.
     pub fn draw_centered(&self, name: &str, center: Vec2, size: Vec2, rotation: f32, tint: Color) {
         self.draw(name, center - size * 0.5, size, SpriteParams { rotation, tint, ..Default::default() });
+    }
+
+    /// Draws a sprite standing on `base` (its bottom centre) and bent sideways
+    /// like a plant in the wind: the bottom stays put and each row shifts by
+    /// `bend * (height above the base)²`, so the top moves `bend` pixels and the
+    /// trunk curves rather than tilting rigidly.
+    pub fn draw_bent(&self, name: &str, base: Vec2, size: Vec2, bend: f32, flip_x: bool, tint: Color) {
+        const ROWS: usize = 6;
+        let uv = self.uv_rect(name);
+        let (u0, u1) = if flip_x { (uv.right(), uv.x) } else { (uv.x, uv.right()) };
+        let mut vertices = Vec::with_capacity((ROWS + 1) * 2);
+        let mut indices = Vec::with_capacity(ROWS * 6);
+        for r in 0..=ROWS {
+            let f = r as f32 / ROWS as f32; // 0 at the top, 1 at the base
+            let up = 1.0 - f;
+            let y = base.y - size.y * up;
+            let dx = bend * up * up;
+            let v = uv.y + uv.h * f;
+            vertices.push(Vertex::new(base.x - size.x * 0.5 + dx, y, 0.0, u0, v, tint));
+            vertices.push(Vertex::new(base.x + size.x * 0.5 + dx, y, 0.0, u1, v, tint));
+            if r > 0 {
+                let i = (r * 2) as u16;
+                indices.extend_from_slice(&[i - 2, i - 1, i + 1, i - 2, i + 1, i]);
+            }
+        }
+        draw_mesh(&Mesh { vertices, indices, texture: Some(self.atlas.clone()) });
+    }
+
+    /// A sprite's rectangle in the atlas, in 0..1 texture coordinates.
+    pub fn uv_rect(&self, name: &str) -> Rect {
+        let r = self.rect(name);
+        let s = self.atlas.size();
+        Rect::new(r.x / s.x, r.y / s.y, r.w / s.x, r.h / s.y)
     }
 
     /// Native pixel size of a sprite.
@@ -209,6 +261,88 @@ void main() {
     gl_Position = Projection * Model * vec4(position, 1.0);
     uv = texcoord;
     color = color0 / 255.0;
+}
+"#;
+
+/// Like `VERTEX`, but also passes the per-vertex `normal` through as `extra`,
+/// which macroquad leaves free for custom data.
+const VERTEX_EXTRA: &str = r#"#version 100
+attribute vec3 position;
+attribute vec2 texcoord;
+attribute vec4 color0;
+attribute vec4 normal;
+varying lowp vec2 uv;
+varying lowp vec4 color;
+varying mediump vec4 extra;
+uniform mat4 Model;
+uniform mat4 Projection;
+void main() {
+    gl_Position = Projection * Model * vec4(position, 1.0);
+    uv = texcoord;
+    color = color0 / 255.0;
+    extra = normal;
+}
+"#;
+
+/// One ore-field tile. `extra.xy` is the position inside the tile (0..1, y
+/// down) and `extra.z` an 8-bit mask of which neighbours hold the same ore,
+/// clockwise from north: N, NE, E, SE, S, SW, W, NW. The field ends a little
+/// short of every other neighbour, measured by a smooth distance to it (a soft
+/// minimum, so corners round off), and the texture's alpha, which holds rock
+/// height, lets rocks reach past that line for a rocky outline. The outline is
+/// inked like the painted art, with a soft inner shade inside it.
+const ORE_FIELD: &str = r#"#version 100
+#ifdef GL_FRAGMENT_PRECISION_HIGH
+precision highp float;
+#else
+precision mediump float;
+#endif
+varying lowp vec2 uv;
+varying lowp vec4 color;
+varying mediump vec4 extra;
+uniform sampler2D Texture;
+
+// Softness of the minimum: larger rounds outer corners more.
+const float K = 0.26;
+// Where the edge sits (distance from the open neighbour, in tiles), and how far
+// the rock height pushes it in or out.
+const float EDGE = 0.16;
+const float ROCKY = 0.34;
+
+float cell_dist(vec2 p, vec2 lo) {
+    vec2 q = max(max(lo - p, p - (lo + 1.0)), 0.0);
+    return length(q);
+}
+
+float open_term(float mask, float bit, vec2 p, vec2 lo) {
+    // 1 when this neighbour is NOT ore, i.e. the field must fade toward it.
+    float on = mod(floor(mask / bit), 2.0);
+    return (1.0 - on) * exp(-cell_dist(p, lo) / K);
+}
+
+void main() {
+    vec4 t = texture2D(Texture, uv);
+    vec2 p = extra.xy;
+    float m = floor(extra.z + 0.5);
+    float acc = 0.0;
+    acc += open_term(m, 1.0, p, vec2(0.0, -1.0));
+    acc += open_term(m, 2.0, p, vec2(1.0, -1.0));
+    acc += open_term(m, 4.0, p, vec2(1.0, 0.0));
+    acc += open_term(m, 8.0, p, vec2(1.0, 1.0));
+    acc += open_term(m, 16.0, p, vec2(0.0, 1.0));
+    acc += open_term(m, 32.0, p, vec2(-1.0, 1.0));
+    acc += open_term(m, 64.0, p, vec2(-1.0, 0.0));
+    acc += open_term(m, 128.0, p, vec2(-1.0, -1.0));
+    float d = acc > 1e-6 ? -K * log(acc) : 4.0;
+    // Rocks (high alpha) reach past the edge, bare earth stops short of it.
+    float e = d + (t.a - 0.6) * ROCKY - EDGE;
+    float a = smoothstep(0.0, 0.025, e);
+    // A dark ink line along the outline, like the painted art, then a gentle
+    // inner shade so the deposit sits a little into the ground.
+    vec3 ink = vec3(0.17, 0.10, 0.06);
+    vec3 c = mix(ink, t.rgb, smoothstep(0.02, 0.06, e));
+    c *= mix(0.82, 1.0, smoothstep(0.0, 0.45, e));
+    gl_FragColor = vec4(c, a) * color;
 }
 "#;
 

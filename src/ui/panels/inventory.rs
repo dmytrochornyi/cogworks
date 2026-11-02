@@ -54,12 +54,13 @@ pub(crate) fn inventory_panel(g: &mut Game) {
         let n = g.world.player.inv.get(item);
         slot(&a, sr, Some(item), Some(n), g.tool == Some(item), false, &mut g.clickables);
         if hovered(sr) {
-            let mut tip = vec![item.name().to_string(), format!("{n} carried")];
+            let carried = format!("{n} carried");
+            let mut tip = vec![carried.as_str()];
             if item.place_kind().is_some() {
-                tip.push("Click to hold".into());
+                tip.push("Click to hold");
             }
-            tip.push("Press 1–0 to put it on the quickbar".into());
-            g.tooltip = Some(Tip::Lines(tip));
+            tip.push("Press 1–0 to put it on the quickbar");
+            g.tooltip = Some(Tip::item(item, &tip));
         }
         if clicked(sr) && item.place_kind().is_some() {
             g.tool = Some(item);

@@ -9,7 +9,11 @@ pub(super) const GAP: f32 = 6.0;
 pub(super) const QUICK_SLOT: f32 = 54.0;
 pub(super) const MINIMAP: f32 = 190.0;
 pub(super) const LINE: f32 = 21.0;
-pub(super) const HEADER: f32 = 54.0;
+/// Top of a titled window's content: the header band (`HEADER_BAND` tall, 9 px
+/// down) plus breathing room, so the first row never touches the band.
+pub(super) const HEADER: f32 = 9.0 + HEADER_BAND + 16.0;
+/// Height of the moss-green title band across a window's top.
+pub(super) const HEADER_BAND: f32 = 42.0;
 
 // Tokens, expressed once for the whole UI.
 pub(super) const BG: Color = theme::color(theme::BG);

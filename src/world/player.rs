@@ -35,6 +35,14 @@ pub struct Player {
     /// cycle reflect real movement (pushing a wall doesn't animate). Not saved.
     #[serde(skip)]
     pub vel: Vec2,
+    /// Position at the start of the last simulation tick. The simulation runs at
+    /// a fixed rate, so drawing blends from here to `pos` to stay smooth on any
+    /// display refresh rate. Not saved.
+    #[serde(skip)]
+    pub prev_pos: Vec2,
+    /// Where the robot is drawn this frame (see [`Player::interpolate`]). Not saved.
+    #[serde(skip)]
+    pub draw_pos: Vec2,
     /// Hand-mining progress on a tile.
     #[serde(skip)]
     pub mining: Option<(IVec2, f32)>,
@@ -93,6 +101,8 @@ impl Player {
             walk: Vec2::ZERO,
             stride: 0.0,
             vel: Vec2::ZERO,
+            prev_pos: pos,
+            draw_pos: pos,
             mining: None,
             calm: 100.0,
             respawn: 0.0,
@@ -120,6 +130,18 @@ impl Player {
         }
     }
 
+    /// Sets `draw_pos` partway through the current tick: `alpha` 0 is the previous
+    /// tick's position, 1 the latest.
+    pub fn interpolate(&mut self, alpha: f32) {
+        self.draw_pos = self.prev_pos.lerp(self.pos, alpha.clamp(0.0, 1.0));
+    }
+
+    /// Jumps straight to `pos` with no blend (loading, respawning).
+    pub fn snap(&mut self) {
+        self.prev_pos = self.pos;
+        self.draw_pos = self.pos;
+    }
+
     pub fn in_reach(&self, tile: IVec2) -> bool {
         (tile.as_vec2() + Vec2::splat(0.5)).distance(self.pos) <= REACH
     }
@@ -131,6 +153,7 @@ impl World {
             self.player.respawn -= dt;
             if self.player.respawn <= 0.0 {
                 self.player.pos = self.spawn;
+                self.player.snap();
                 self.player.hp = PLAYER_HP;
                 self.events.push("You respawned at the landing site".into());
             }
@@ -159,16 +182,18 @@ impl World {
 
     fn walk_player(&mut self, dt: f32) {
         let step = self.player.walk.normalize_or_zero() * PLAYER_SPEED * dt;
-        let p = self.player.pos;
+        let start = self.player.pos;
+        self.player.prev_pos = start;
         // Move each axis separately so we slide along walls.
-        let x = p + vec2(step.x, 0.0);
-        let p = if self.blocked(x) { p } else { x };
+        let x = start + vec2(step.x, 0.0);
+        let p = if self.blocked(x) { start } else { x };
         let y = p + vec2(0.0, step.y);
         self.player.pos = if self.blocked(y) { p } else { y };
         // Accumulate the distance actually moved (after collision) and keep the
         // real velocity, so the walk animation follows feet on the ground rather
-        // than the requested step (pushing a wall doesn't walk).
-        let moved = self.player.pos - p;
+        // than the requested step (pushing a wall doesn't walk). Measured from
+        // the start of the tick, so both axes count.
+        let moved = self.player.pos - start;
         self.player.stride += moved.length();
         self.player.vel = if dt > 0.0 { moved / dt } else { Vec2::ZERO };
     }

@@ -589,3 +589,21 @@ fn write_demo_save() {
     let path = std::env::var("DEMO_SAVE").unwrap_or("demo_save.json".into());
     crate::save::save(&mut w, &path).unwrap();
 }
+
+#[test]
+fn walking_velocity_includes_both_axes() {
+    // Diagonal input must report a diagonal velocity (it drives the robot's
+    // facing), and sideways input a sideways one, not just the vertical part.
+    let mut w = blank();
+    w.player.pos = vec2(100.5, 100.5);
+    w.player.walk = vec2(1.0, 1.0);
+    run(&mut w, 0.1);
+    let v = w.player.vel;
+    assert!(v.x > 0.0 && v.y > 0.0 && (v.x - v.y).abs() < 1e-3, "diagonal velocity, got {v}");
+
+    w.player.walk = vec2(-1.0, 0.0);
+    run(&mut w, 0.1);
+    let v = w.player.vel;
+    assert!(v.x < 0.0 && v.y.abs() < 1e-6, "sideways velocity, got {v}");
+    assert!((v.length() - super::player::PLAYER_SPEED).abs() < 1e-2, "full walking speed, got {}", v.length());
+}

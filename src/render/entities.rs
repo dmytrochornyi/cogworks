@@ -13,7 +13,7 @@ use super::camera::Cam;
 use super::juice::Juice;
 use super::ground::draw_ground;
 use super::overlays::draw_wires;
-use super::{BADGE, HONEY, INK, PX, SAGE, TERRA, angle, hash, lantern_seed, rgba, sway, wind, world_bar};
+use super::{BADGE, HONEY, INK, PX, SAGE, TERRA, angle, hash, lantern_seed, rgba, sway, tree_wind, world_bar};
 
 pub(super) fn item_key(item: Item) -> Option<&'static str> {
     Some(match item {
@@ -173,7 +173,12 @@ fn belt_item_pos(world: &World, id: usize, lane: usize, p: f32) -> Option<Vec2> 
     let State::Belt(b) = &e.state else {
         return None;
     };
-    if e.kind == Kind::Tunnel && !b.exit && p > 0.5 {
+    // Tunnels hide items inside their housing, which fills the half of the tile
+    // past the middle (an exit is drawn mirrored, so its housing is the back
+    // half). An item is 0.4 tiles wide, so it vanishes once its leading edge
+    // would reach the housing and reappears only when it has fully cleared it.
+    const HIDE: f32 = 0.5 - ITEM_HALF;
+    if e.kind == Kind::Tunnel && ((!b.exit && p > HIDE) || (b.exit && p < 1.0 - HIDE)) {
         return None;
     }
     let c = e.pos.as_vec2() + Vec2::splat(0.5);
@@ -192,25 +197,41 @@ fn belt_item_pos(world: &World, id: usize, lane: usize, p: f32) -> Option<Vec2> 
     Some(c + f * (p.min(1.0) - 0.5) + left * 0.2 * sign)
 }
 
+/// A pipe tile: a copper arm toward each linked neighbour, ending in a collar at
+/// the tile edge (so neighbouring pipes meet in one coupling). Straight runs are
+/// a plain tube with a small sight glass showing the fluid; bends, junctions
+/// and dead ends get a round bolted hub instead, with the glass on top.
 fn draw_pipe(a: &Assets, world: &World, e: &Entity, s0: Vec2, z: f32) {
     let c = s0 + Vec2::splat(z / 2.0);
     let k = z / PX;
-    for d in Dir::ALL {
-        let n = e.pos + d.vec();
-        let linked = world.entity_ref_at(n).is_some_and(|o| o.kind == Kind::Pipe) || world.pipe_port_link(e.pos, n);
-        if linked {
-            a.draw("pipe_seg", c - vec2(0.0, 12.0 * k), vec2(32.0, 24.0) * k, SpriteParams {
-                rotation: angle(d),
-                pivot: Some(c),
-                ..Default::default()
-            });
-        }
+    let links: Vec<Dir> = Dir::ALL
+        .into_iter()
+        .filter(|d| {
+            let n = e.pos + d.vec();
+            world.entity_ref_at(n).is_some_and(|o| o.kind == Kind::Pipe) || world.pipe_port_link(e.pos, n)
+        })
+        .collect();
+    for &d in &links {
+        a.draw("pipe_seg", c - vec2(0.0, 12.0 * k), vec2(32.0, 24.0) * k, SpriteParams {
+            rotation: angle(d),
+            pivot: Some(c),
+            ..Default::default()
+        });
     }
-    a.draw("pipe_hub", s0, Vec2::splat(z), SpriteParams::default());
+    let straight = links.len() == 2 && links[0] == links[1].opposite();
+    if !straight {
+        a.draw("pipe_hub", s0, Vec2::splat(z), SpriteParams::default());
+    }
     let fill = e.fnet.and_then(|n| world.fluids.nets.get(n)).and_then(|n| n.fluid.map(|f| (f, n.amount / n.cap.max(1.0))));
+    // Sight glass: ink ring, dark glass, and the fluid filling it as the net fills.
+    let r = z * if straight { 0.075 } else { 0.085 };
+    draw_circle(c.x, c.y, r + z * 0.025, INK);
+    // Empty glass is a cool grey-blue; fluid fills it from the middle out.
+    draw_circle(c.x, c.y, r, theme::rgba(0.42, 0.50, 0.52, 1.0));
     if let Some((f, frac)) = fill {
-        draw_circle(c.x, c.y, z * 0.1, rgba(f.color(), 0.5 + 0.5 * frac));
+        draw_circle(c.x, c.y, r * (0.45 + 0.55 * frac.clamp(0.0, 1.0)), f.color());
     }
+    draw_circle(c.x - r * 0.35, c.y - r * 0.35, r * 0.28, rgba(theme::color(theme::WHITE), 0.6));
 }
 
 enum Drawable<'a> {
@@ -303,7 +324,7 @@ pub fn draw_world(a: &Assets, world: &World, cam: &Cam, t: f32, juice: &Juice) {
     }
     stand.extend(world.enemies.iter().map(|en| (en.pos.y + 0.3, Drawable::Enemy(en))));
     if world.player.alive() {
-        stand.push((world.player.pos.y + 0.3, Drawable::Player));
+        stand.push((world.player.draw_pos.y + 0.3, Drawable::Player));
     }
     stand.sort_by(|x, y| x.0.total_cmp(&y.0));
     for (_, d) in &stand {
@@ -384,12 +405,15 @@ fn draw_tree(a: &Assets, cam: &Cam, t: f32, p: IVec2, kind: u8, chopping: bool) 
     let jitter = vec2(((h >> 3) % 17) as f32 - 8.0, ((h >> 9) % 9) as f32 - 4.0) / PX * cam.zoom;
     let base = cam.w2s(p.as_vec2() + vec2(0.5, 0.92)) + jitter;
     draw_ellipse(base.x, base.y, size.x * 0.34, size.x * 0.11, 0.0, theme::alpha(theme::SHADOW, 0.22));
-    let mut rot = wind(t, p.x as f32, p.y as f32) * if kind == 3 { 0.05 } else { 0.08 };
+    // Trees bend from the base (see `draw_bent`): the crown sways with the slow
+    // gusts, bushes less than tall trees, and a chop makes it shiver.
+    let sway = tree_wind(t, p.x as f32, p.y as f32) * if kind == 3 { 0.035 } else { 0.06 };
+    let mut bend = sway * size.y;
     if chopping {
-        rot += (t * 48.0).sin() * 0.035;
+        bend += (t * 40.0).sin() * size.y * 0.025;
     }
     let flip = (h >> 15) & 1 == 1;
-    a.draw(key, base - vec2(size.x * 0.5, size.y), size, SpriteParams { rotation: rot, pivot: Some(base), flip_x: flip, ..Default::default() });
+    a.draw_bent(key, base, size, bend, flip, WHITE);
 }
 
 fn draw_entity(a: &Assets, e: &Entity, cam: &Cam, t: f32) {
@@ -431,7 +455,15 @@ fn draw_entity(a: &Assets, e: &Entity, cam: &Cam, t: f32) {
     }
     draw_kind(a, e.kind, e.dir, s0, z, WHITE);
     match e.kind {
-        Kind::Drill => a.draw_centered("drill_bit", at(63.0, 50.0), Vec2::splat(56.0 * k), spin(5.0), WHITE),
+        Kind::Drill => {
+            // The bit's hub sits below the middle of its 64 px sprite (three
+            // blades, one pointing up), so it spins about the hub, which is
+            // placed on the drill's bore.
+            let size = Vec2::splat(56.0 * k);
+            let hub = DRILL_BIT_HUB / 64.0 * size;
+            let bore = at(63.0, 50.0);
+            a.draw("drill_bit", bore - hub, size, SpriteParams { rotation: spin(5.0), pivot: Some(bore), ..Default::default() });
+        }
         Kind::Smelter if e.active => {
             let breathe = 0.925 + 0.075 * (t * 1.1 + e.pos.x as f32 * 2.3).sin();
             a.draw_centered("glow", at(64.0, 104.0), vec2(70.0, 40.0) * k, 0.0, theme::rgba(1.0, 0.55, 0.2, 0.75 * breathe));
@@ -479,6 +511,12 @@ fn draw_lantern(a: &Assets, s0: Vec2, k: f32, rotation: f32, tint: Color) {
         ..Default::default()
     });
 }
+
+/// Half the on-belt item size, in tiles (items are drawn `z * 0.4` across).
+const ITEM_HALF: f32 = 0.2;
+
+/// The drill bit's hub in its 64x64 sprite, measured from `assets/art/drill_bit.png`.
+const DRILL_BIT_HUB: Vec2 = Vec2::new(32.0, 38.5);
 
 /// Steam vent point per machine, in sprite pixels from the sprite's top-left.
 /// Each sits on the chimney, stack or open top of the machine's sprite in

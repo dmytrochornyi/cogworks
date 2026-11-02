@@ -6,3 +6,5 @@ cogworks_autosave.json
 /drive-download-*/
 /samples/
 __pycache__/
+cogworks_test_save.json
+cogworks_settings.json

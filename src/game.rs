@@ -99,6 +99,12 @@ impl Game {
         }
     }
 
+    /// Eases the camera toward where the robot is drawn this frame.
+    pub(crate) fn follow_camera(&mut self, dt: f32) {
+        let target = self.world.player.draw_pos;
+        self.cam.pos += (target - self.cam.pos) * (1.0 - (-dt * 10.0).exp());
+    }
+
     pub fn toast(&mut self, msg: impl Into<String>) {
         let msg = msg.into();
         if let Some(t) = self.toasts.iter_mut().find(|(m, _)| *m == msg) {

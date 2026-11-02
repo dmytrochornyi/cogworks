@@ -69,7 +69,7 @@ pub(super) fn minimap(g: &mut Game) {
     }
     rrect_lines(r, radius::SM, line::STRONG, EDGE);
     let scale = MINIMAP / MAP_W as f32;
-    let p = g.world.player.pos * scale + r.point();
+    let p = g.world.player.draw_pos * scale + r.point();
     circle(p, 4.0, TEXT);
     circle_lines(p, 4.0, line::BASE, BG);
     let lo = g.cam.s2w(Vec2::ZERO) * scale + r.point();

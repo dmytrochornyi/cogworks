@@ -136,9 +136,6 @@ impl Game {
         }
         self.world.player.walk = walk;
 
-        // Camera follows the player.
-        let target = self.world.player.pos;
-        self.cam.pos += (target - self.cam.pos) * (1.0 - (-dt * 10.0).exp());
         let wheel = mouse_wheel().1;
         if wheel != 0.0 && !self.mouse_over_ui() {
             let factor = if wheel > 0.0 { 1.12 } else { 1.0 / 1.12 };

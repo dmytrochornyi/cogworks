@@ -104,6 +104,10 @@ async fn main() {
                 acc -= TICK;
             }
         }
+        // Draw the robot between its last two ticks, so it glides instead of
+        // stepping whenever a frame gets zero or two ticks.
+        game.world.player.interpolate(acc / TICK);
+        game.follow_camera(dt);
         game.update(dt);
         game.draw();
         if let Some(path) = &screenshot

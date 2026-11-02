@@ -52,7 +52,7 @@ pub(super) fn draw_lights(a: &Assets, world: &World, cam: &Cam, t: f32, glow: f3
         }
     }
     if world.player.alive() {
-        light(a, cam, world.player.pos, 4.5, rgba(warm, glow * 0.75));
+        light(a, cam, world.player.draw_pos, 4.5, rgba(warm, glow * 0.75));
     }
     for s in &world.shots {
         light(a, cam, s.from, 1.4, theme::rgba(1.0, 0.85, 0.5, 0.6));

@@ -38,29 +38,57 @@ pub(super) fn draw_enemy(a: &Assets, en: &Enemy, cam: &Cam) {
 }
 
 /// Which way the player faces, kept between frames so standing still holds
-/// the last direction.
+/// the last direction. Screen y points down, so "front" is toward the viewer.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Facing {
     Front,
-    Back,
-    Left,
+    FrontRight,
     Right,
+    BackRight,
+    Back,
+    BackLeft,
+    Left,
+    FrontLeft,
 }
 
 impl Facing {
-    /// The facing for a movement velocity, or `None` when standing still.
-    /// Mostly-vertical motion shows the front or back; otherwise the side.
+    /// Clockwise from facing the viewer (moving down the screen).
+    const RING: [Facing; 8] = [
+        Facing::Front,
+        Facing::FrontLeft,
+        Facing::Left,
+        Facing::BackLeft,
+        Facing::Back,
+        Facing::BackRight,
+        Facing::Right,
+        Facing::FrontRight,
+    ];
+
+    /// The facing for a movement velocity, or `None` when standing still:
+    /// whichever of the eight compass directions is nearest the motion.
     pub fn from_vel(vel: Vec2) -> Option<Facing> {
         if vel.length_squared() < 1e-4 {
             return None;
         }
-        Some(if vel.y.abs() > vel.x.abs() * 1.2 {
-            if vel.y > 0.0 { Facing::Front } else { Facing::Back }
-        } else if vel.x < 0.0 {
-            Facing::Left
-        } else {
-            Facing::Right
-        })
+        // Angle from straight down (+y), turning toward -x.
+        let a = (-vel.x).atan2(vel.y);
+        let k = (a / std::f32::consts::FRAC_PI_4).round().rem_euclid(8.0) as usize;
+        Some(Self::RING[k])
+    }
+
+    /// Sprite and whether to mirror it. The side and 3/4 art faces one way and
+    /// is mirrored for the other: `player_side` faces left, the 3/4 views right.
+    fn sprite(self) -> (&'static str, bool) {
+        match self {
+            Facing::Front => ("player_0", false),
+            Facing::Back => ("player_back", false),
+            Facing::Left => ("player_side", false),
+            Facing::Right => ("player_side", true),
+            Facing::FrontRight => ("player_front_right", false),
+            Facing::FrontLeft => ("player_front_right", true),
+            Facing::BackRight => ("player_back_right", false),
+            Facing::BackLeft => ("player_back_right", true),
+        }
     }
 }
 
@@ -72,7 +100,7 @@ pub(super) fn draw_player(a: &Assets, player: &Player, cam: &Cam, t: f32, facing
     let z = cam.zoom;
     let float = 0.06 * (t * 2.6).sin() + if moving { 0.025 * (t * 11.0).sin() } else { 0.0 };
     let lift = 0.16 + float;
-    let ground = cam.w2s(player.pos + vec2(0.0, 0.3));
+    let ground = cam.w2s(player.draw_pos + vec2(0.0, 0.3));
     let size = Vec2::splat(z * 1.05);
 
     let sh = 1.0 - float * 2.5;
@@ -82,12 +110,7 @@ pub(super) fn draw_player(a: &Assets, player: &Player, cam: &Cam, t: f32, facing
     let flicker = 0.8 + 0.2 * (t * 37.0).sin() * (t * 23.0).cos();
     a.draw_centered("glow", base + vec2(0.0, z * 0.05), vec2(z * 0.55, z * 0.32) * flicker, 0.0, Color::new(1.0, 0.62, 0.22, 0.55 * flicker));
 
-    let (key, flip) = match facing {
-        Facing::Front => ("player_0", false),
-        Facing::Back => ("player_back", false),
-        Facing::Right => ("player_side", false),
-        Facing::Left => ("player_side", true),
-    };
+    let (key, flip) = facing.sprite();
     // Lean into horizontal motion, tipping forward a touch when moving up or down.
     let lean = lean(player.vel);
     a.draw(key, base - vec2(size.x * 0.5, size.y), size, SpriteParams {
@@ -116,6 +139,10 @@ mod tests {
         assert_eq!(Facing::from_vel(vec2(0.0, -3.0)), Some(Facing::Back));
         assert_eq!(Facing::from_vel(vec2(3.0, 1.0)), Some(Facing::Right));
         assert_eq!(Facing::from_vel(vec2(-3.0, -1.0)), Some(Facing::Left));
+        assert_eq!(Facing::from_vel(vec2(3.0, 3.0)), Some(Facing::FrontRight));
+        assert_eq!(Facing::from_vel(vec2(-3.0, 3.0)), Some(Facing::FrontLeft));
+        assert_eq!(Facing::from_vel(vec2(3.0, -3.0)), Some(Facing::BackRight));
+        assert_eq!(Facing::from_vel(vec2(-3.0, -3.0)), Some(Facing::BackLeft));
         assert_eq!(Facing::from_vel(Vec2::ZERO), None, "standing still keeps the last facing");
     }
 

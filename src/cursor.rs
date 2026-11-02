@@ -26,7 +26,7 @@ pub enum CursorKind {
 /// Native pixel size of each cursor sprite.
 const CURSOR_SIZE: f32 = 48.0;
 /// On-screen size in logical UI pixels (scales with `ui_scale`).
-const CURSOR_DRAW: f32 = 36.0;
+const CURSOR_DRAW: f32 = 26.0;
 
 /// Where each sprite anchors to the mouse position, in native pixels.
 pub const POINT_HOTSPOT: [f32; 2] = [7.0, 7.0];
