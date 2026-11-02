@@ -55,7 +55,10 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.name }}
-          path: cogworks-*.*
+          path: |
+            cogworks-*.tar.gz
+            cogworks-*.zip
+          if-no-files-found: error
 
   release:
     name: Publish release
@@ -76,10 +79,12 @@ jobs:
         run: |
           notes=".github/release-notes/${GITHUB_REF_NAME}.md"
           [ -f "$notes" ] || notes=/dev/null
+          files=$(find dist -maxdepth 1 -type f \( -name '*.tar.gz' -o -name '*.zip' \) | sort)
+          echo "$files"
           if gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1; then
-            gh release upload "$GITHUB_REF_NAME" dist/* --clobber
+            gh release upload "$GITHUB_REF_NAME" $files --clobber
           else
             flags=""
             case "$GITHUB_REF_NAME" in v0.*) flags="--prerelease" ;; esac
-            gh release create "$GITHUB_REF_NAME" dist/* --title "Cogworks $GITHUB_REF_NAME" --notes-file "$notes" $flags
+            gh release create "$GITHUB_REF_NAME" $files --title "Cogworks $GITHUB_REF_NAME" --notes-file "$notes" $flags
           fi
