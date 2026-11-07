@@ -144,7 +144,7 @@ fn new_game_page(g: &mut Game, top: f32) {
     text(&a, "No attacks: just build (toggle any time with P)", peaceful.x + space::L, peaceful.y + 31.0, TextSize::Xs, TEXT_DIM);
     s.y += space::XS;
     let note = if g.has_game {
-        "Your save files stay until you save over them."
+        "Your current autosave is kept as cogworks_autosave.prev.json."
     } else {
         "A fresh meadow, a few tools and a long way to go."
     };
@@ -162,19 +162,25 @@ fn new_game_page(g: &mut Game, top: f32) {
 /// Close and Esc go.
 fn settings_page(g: &mut Game, top: f32, back: Screen) {
     let a = g.assets.clone();
-    let r = Rect::new((ui_width() - 460.0) / 2.0, top, 460.0, 300.0);
+    let r = Rect::new((ui_width() - 460.0) / 2.0, top, 460.0, 360.0);
     let (content, closed) = Panel::new(r).title("Settings").closable().show(g);
     let mut y = content.y;
     let mut s = g.settings;
-    for (label, v) in [("Music", &mut s.music), ("Ambience", &mut s.ambience), ("Sound effects", &mut s.sfx)] {
+    for (id, (label, v)) in [("Music", &mut s.music), ("Ambience", &mut s.ambience), ("Sound effects", &mut s.sfx)].into_iter().enumerate() {
         text(&a, label, content.x, y + 4.0, TextSize::M, TEXT);
         let pct = format!("{:.0}%", *v * 100.0);
         let pw = text_w(&a, &pct, TextSize::S);
         text(&a, &pct, content.right() - pw, y + 6.0, TextSize::S, KEY);
         let track = Rect::new(content.x + 140.0, y + 10.0, content.w - 140.0 - 56.0, 10.0);
-        slider(g, track, v);
+        slider(g, track, v, id);
         y += 44.0;
     }
+    let look_r = Rect::new(content.x, y + 4.0, content.w, 40.0);
+    let look_label = format!("Look: {}", s.look.name());
+    if button(&a, look_r, &look_label, true, &mut g.clickables) {
+        s.look = s.look.next();
+    }
+    y += 56.0;
     let fs = Rect::new(content.x, y + 4.0, content.w, 40.0);
     let label = if s.fullscreen { "Fullscreen: on" } else { "Fullscreen: off" };
     if button(&a, fs, label, true, &mut g.clickables) {
@@ -195,18 +201,27 @@ fn settings_page(g: &mut Game, top: f32, back: Screen) {
 }
 
 /// A horizontal slider for a 0..=1 value: drag or click anywhere on its track.
-fn slider(g: &mut Game, track: Rect, v: &mut f32) {
+/// The press is captured so a drag keeps following the cursor until release,
+/// even when it leaves the track.
+fn slider(g: &mut Game, track: Rect, v: &mut f32, id: usize) {
     let hit = Rect::new(track.x - 8.0, track.y - 12.0, track.w + 16.0, track.h + 24.0);
     g.clickables.push(hit);
-    if is_mouse_button_down(MouseButton::Left) && hovered(hit) {
-        *v = ((ui_mouse().x - track.x) / track.w).clamp(0.0, 1.0);
+    if is_mouse_button_pressed(MouseButton::Left) && hovered(hit) {
+        g.slider_capture = Some(id);
+    }
+    if g.slider_capture == Some(id) {
+        if is_mouse_button_down(MouseButton::Left) {
+            *v = ((ui_mouse().x - track.x) / track.w).clamp(0.0, 1.0);
+        } else {
+            g.slider_capture = None;
+        }
     }
     rrect(track, track.h / 2.0, SLOT_WELL);
     let fill = Rect::new(track.x, track.y, (track.w * *v).max(track.h), track.h);
     rrect(fill, track.h / 2.0, theme::color(theme::LACQUER_500));
     rrect_lines(track, track.h / 2.0, line::HAIR, EDGE);
     let knob = vec2(track.x + track.w * *v, track.y + track.h / 2.0);
-    let kr = if hovered(hit) { 10.0 } else { 9.0 };
+    let kr = if g.slider_capture == Some(id) || hovered(hit) { 10.0 } else { 9.0 };
     draw_circle(knob.x, knob.y + 1.5, kr, theme::alpha(theme::SHADE, 0.35));
     draw_circle(knob.x, knob.y, kr, theme::color(theme::BG));
     draw_circle_lines(knob.x, knob.y, kr, line::BASE, EDGE);
@@ -215,6 +230,10 @@ fn slider(g: &mut Game, track: Rect, v: &mut f32) {
 pub(super) fn pause(g: &mut Game, page: MenuPage) {
     let a = g.assets.clone();
     veil(0.8);
+    // Ignore the Esc that opened the menu this same frame: macroquad clears
+    // pressed keys only at end of frame, so it would otherwise close at once.
+    let just_opened = g.menu_just_opened;
+    g.menu_just_opened = false;
     let top = (ui_height() * 0.22).max(space::L);
     if page == MenuPage::Settings {
         settings_page(g, top, Screen::Paused(MenuPage::Main));
@@ -232,7 +251,11 @@ pub(super) fn pause(g: &mut Game, page: MenuPage) {
     let hw = text_w(&a, hint, TextSize::Xs);
     text(&a, hint, r.x + (r.w - hw) / 2.0, s.y + 2.0, TextSize::Xs, TEXT_DIM);
 
-    if resume || closed || is_key_pressed(KeyCode::Escape) {
+    if is_key_pressed(KeyCode::F5) {
+        g.save_game();
+    }
+    let esc = is_key_pressed(KeyCode::Escape) && !just_opened;
+    if resume || closed || esc {
         g.resume();
     } else if save {
         g.save_game();
@@ -240,8 +263,7 @@ pub(super) fn pause(g: &mut Game, page: MenuPage) {
         g.screen = Screen::Paused(MenuPage::Settings);
     } else if menu {
         g.to_title();
-    } else if quit {
-        g.save_game();
+    } else if quit && g.save_game() {
         g.quit = true;
     }
 }

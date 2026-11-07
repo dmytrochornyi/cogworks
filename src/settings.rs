@@ -6,6 +6,7 @@ use std::fs;
 use serde::{Deserialize, Serialize};
 
 use crate::audio::Levels;
+use crate::render::Look;
 
 pub const SETTINGS_PATH: &str = "cogworks_settings.json";
 
@@ -16,12 +17,21 @@ pub struct Settings {
     pub ambience: f32,
     pub sfx: f32,
     pub fullscreen: bool,
+    pub look: Look,
+    pub music_muted: bool,
 }
 
 impl Default for Settings {
     fn default() -> Self {
         let l = Levels::default();
-        Settings { music: l.music, ambience: l.ambience, sfx: l.sfx, fullscreen: false }
+        Settings {
+            music: l.music,
+            ambience: l.ambience,
+            sfx: l.sfx,
+            fullscreen: false,
+            look: Look::default(),
+            music_muted: false,
+        }
     }
 }
 
@@ -55,16 +65,27 @@ impl Settings {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::render::Look;
 
     #[test]
     fn settings_round_trip_and_fill_missing_fields() {
-        let s = Settings { music: 0.2, ambience: 0.0, sfx: 1.0, fullscreen: true };
+        let s = Settings {
+            music: 0.2,
+            ambience: 0.0,
+            sfx: 1.0,
+            fullscreen: true,
+            look: Look::Clean,
+            music_muted: true,
+        };
         let back: Settings = serde_json::from_str(&serde_json::to_string(&s).unwrap()).unwrap();
         assert_eq!(back, s);
-        // An older file with only some fields keeps the defaults for the rest.
+        // An older file with only some fields keeps the defaults for the rest,
+        // including the fields added later (look, music_muted).
         let partial: Settings = serde_json::from_str(r#"{"music": 0.1}"#).unwrap();
         assert_eq!(partial.music, 0.1);
         assert_eq!(partial.sfx, Settings::default().sfx);
+        assert_eq!(partial.look, Look::default());
+        assert!(!partial.music_muted);
         // Out-of-range values are pulled back into 0..=1.
         assert_eq!(Settings { music: 3.0, ..s }.clamped().music, 1.0);
     }

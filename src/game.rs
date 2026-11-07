@@ -91,12 +91,21 @@ pub struct Game {
     pub quit: bool,
     /// 0→1 fade-in of the current menu screen.
     pub(crate) menu_fade: f32,
+    /// True on the frame the pause menu opened, so `menus::pause` can ignore the
+    /// Esc that opened it (macroquad clears pressed keys only at end of frame).
+    pub(crate) menu_just_opened: bool,
+    /// Which settings slider the mouse is dragging, if any, until it is released.
+    pub(crate) slider_capture: Option<usize>,
 }
 
 impl Game {
     pub(crate) fn new(world: World, assets: Rc<Assets>, mut audio: Audio, settings: Settings) -> Self {
         let cam = Cam { pos: world.player.pos, zoom: 52.0 };
         audio.set_levels(settings.levels());
+        let look = settings.look;
+        if settings.music_muted {
+            audio.toggle_music();
+        }
         Game {
             world,
             cam,
@@ -111,7 +120,7 @@ impl Game {
             toasts: Vec::new(),
             show_help: true,
             show_pollution: false,
-            look: Look::default(),
+            look,
             paused: false,
             ui_rects: Vec::new(),
             clickables: Vec::new(),
@@ -123,7 +132,7 @@ impl Game {
             assets,
             renderer: Renderer::new(),
             audio,
-            music_on: true,
+            music_on: !settings.music_muted,
             shot_cooldown: 0.0,
             autosave_timer: 0.0,
             autosave: true,
@@ -132,6 +141,8 @@ impl Game {
             settings,
             quit: false,
             menu_fade: 0.0,
+            menu_just_opened: false,
+            slider_capture: None,
         }
     }
 
@@ -145,15 +156,21 @@ impl Game {
         self.has_game = true;
     }
 
-    /// Opens the pause menu, closing any window and putting the tool away.
+    /// Opens the pause menu, closing any open window. The tool stays in hand.
     pub(crate) fn pause_menu(&mut self) {
         self.panel = Panel::None;
         self.screen = Screen::Paused(MenuPage::Main);
         self.menu_fade = 0.0;
+        self.menu_just_opened = true;
     }
 
     /// Starts a fresh world and drops straight into it.
     pub(crate) fn new_game(&mut self, peaceful: bool) {
+        // A new game would be overwritten by the next autosave, so keep the
+        // current autosave aside rather than destroying it.
+        if let Err(e) = save::preserve_autosave() {
+            self.toast(e);
+        }
         let seed = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_nanos() as u64)
@@ -169,10 +186,18 @@ impl Game {
     }
 
     /// Saves to the manual save slot (F5), with a toast either way.
-    pub(crate) fn save_game(&mut self) {
+    /// Returns whether the save succeeded, so "Save and quit" can stay put on
+    /// failure instead of losing the game.
+    pub(crate) fn save_game(&mut self) -> bool {
         match save::save(&mut self.world, save::SAVE_PATH) {
-            Ok(()) => self.toast(format!("Saved to {}", save::SAVE_PATH)),
-            Err(e) => self.toast(e),
+            Ok(()) => {
+                self.toast(format!("Saved to {}", save::SAVE_PATH));
+                true
+            }
+            Err(e) => {
+                self.toast(e);
+                false
+            }
         }
     }
 
@@ -190,11 +215,12 @@ impl Game {
         self.menu_fade = 0.0;
     }
 
-    /// Applies changed settings straight away (volumes); fullscreen is switched
-    /// by the settings page itself.
+    /// Applies changed settings straight away (volumes and look); fullscreen is
+    /// switched by the settings page itself.
     pub(crate) fn apply_settings(&mut self, s: Settings) {
         self.settings = s;
         self.audio.set_levels(s.levels());
+        self.look = s.look;
     }
 
     /// On the title screen the camera drifts slowly over the backdrop world.

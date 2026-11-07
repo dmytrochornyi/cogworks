@@ -12,9 +12,10 @@
 //! pass and both bloom passes entirely.
 
 use macroquad::prelude::*;
+use serde::{Deserialize, Serialize};
 
 /// A preset for the post-processing pass, cycled with the V key.
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
 pub enum Look {
     /// Painted storybook: soft bloom, lush colour, sun shafts, cloud shadows.
     #[default]

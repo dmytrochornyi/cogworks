@@ -63,6 +63,9 @@ fn window_icon() -> macroquad::miniquad::conf::Icon {
 
 #[macroquad::main(conf)]
 async fn main() {
+    // Closing the window shouldn't silently lose up to 3 minutes of play: keep
+    // the app alive so `is_quit_requested` can autosave first.
+    prevent_quit();
     let seed = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_nanos() as u64)
@@ -71,17 +74,21 @@ async fn main() {
     // `cogworks <save file>` drops straight into that save. Otherwise the title
     // screen opens over the newest save (so Continue resumes it), or over a
     // fresh world when there is none yet.
-    let mut load_error = None;
+    let mut load_note = None;
     let (world, has_game, screen) = match std::env::args().nth(1) {
         Some(path) => (save::load(&path).unwrap_or_else(|e| panic!("{e}")), true, Screen::Playing),
         None if screenshot_mode => (World::new(seed), false, Screen::Playing),
-        None => match save::newest_save().map(save::load) {
-            Some(Ok(w)) => (w, true, Screen::Title(MenuPage::Main)),
-            Some(Err(e)) => {
-                load_error = Some(e);
+        None => match save::load_newest_or_fallback() {
+            Ok(loaded) => {
+                if let Some(failed) = loaded.failed {
+                    load_note = Some(format!("{failed} failed to load · loaded {} instead", loaded.slot));
+                }
+                (loaded.world, true, Screen::Title(MenuPage::Main))
+            }
+            Err(e) => {
+                load_note = Some(e);
                 (World::new(seed), false, Screen::Title(MenuPage::Main))
             }
-            None => (World::new(seed), false, Screen::Title(MenuPage::Main)),
         },
     };
     let assets = Rc::new(Assets::load().await);
@@ -91,7 +98,7 @@ async fn main() {
     game.screen = screen;
     // A loaded game doesn't need the welcome note again.
     game.show_help = !has_game;
-    if let Some(e) = load_error {
+    if let Some(e) = load_note {
         game.toast(e);
     }
     // Dev aid: open a menu in screenshot mode.
@@ -170,6 +177,23 @@ async fn main() {
             && frames == 240
         {
             get_screen_data().export_png(path);
+            break;
+        }
+        if is_quit_requested() {
+            // Closing the window: autosave so nothing is lost, then save the
+            // settings and exit. The title screen is skipped because the world
+            // was already saved on the way there.
+            if game.has_game
+                && !matches!(game.screen, Screen::Title(_))
+                && game.world.player.alive()
+                && !screenshot_mode
+                && let Err(e) = save::save(&mut game.world, save::AUTOSAVE_PATH)
+            {
+                game.toast(e);
+            }
+            if let Err(e) = game.settings.save() {
+                game.toast(e);
+            }
             break;
         }
         if game.quit {

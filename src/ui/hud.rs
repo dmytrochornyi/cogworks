@@ -4,6 +4,7 @@
 use macroquad::prelude::*;
 
 use crate::assets::Assets;
+use crate::game::Screen;
 use crate::items::*;
 use crate::render::*;
 use crate::theme::{self, TextSize, line, space};
@@ -79,7 +80,7 @@ pub(super) fn quickbar(g: &mut Game) {
         {
             g.tooltip = Some(Tip::item(i, &[&format!("Key {}", (k + 1) % 10)]));
         }
-        if clicked(r) {
+        if clicked(r) && g.screen == Screen::Playing {
             g.select_slot(k);
         }
     }
@@ -108,7 +109,7 @@ pub(super) fn craft_queue(g: &mut Game) {
                 None => Tip::Card { icon: None, rows: vec![(None, rec.name.to_string())] },
             });
         }
-        if clicked(r) {
+        if clicked(r) && g.screen == Screen::Playing {
             cancel = Some(k);
         }
         g.ui_rects.push(r);

@@ -177,8 +177,9 @@ impl Game {
             }
         }
         let tile = self.mouse_tile();
-        if is_key_pressed(KeyCode::R) {
-            let ccw = is_key_down(KeyCode::LeftShift);
+        let in_reach = self.world.player.in_reach(tile);
+        if is_key_pressed(KeyCode::R) && !self.paused && in_reach {
+            let ccw = is_key_down(KeyCode::LeftShift) || is_key_down(KeyCode::RightShift);
             if self.tool.is_some() {
                 self.rot = if ccw { self.rot.ccw() } else { self.rot.cw() };
             } else {
@@ -215,6 +216,7 @@ impl Game {
         }
         if is_key_pressed(KeyCode::V) {
             self.look = self.look.next();
+            self.settings.look = self.look;
             self.toast(format!("Look: {}", self.look.name()));
         }
         if is_key_pressed(KeyCode::O) {
@@ -225,6 +227,7 @@ impl Game {
         }
         if is_key_pressed(KeyCode::M) {
             self.audio.toggle_music();
+            self.settings.music_muted = !self.audio.music_on();
         }
         if is_key_pressed(KeyCode::P) {
             self.world.peaceful = !self.world.peaceful;
@@ -232,20 +235,23 @@ impl Game {
             self.toast(msg);
         }
         if is_key_pressed(KeyCode::F5) {
-            match save::save(&mut self.world, save::SAVE_PATH) {
-                Ok(()) => self.toast(format!("Saved to {}", save::SAVE_PATH)),
-                Err(e) => self.toast(e),
-            }
+            self.save_game();
         }
         if is_key_pressed(KeyCode::F9) {
-            match save::newest_save().ok_or_else(|| "No save yet: press F5 to save".to_string()).and_then(save::load) {
-                Ok(world) => {
-                    self.world = world;
+            match save::load_newest_or_fallback() {
+                Ok(loaded) => {
+                    self.world = loaded.world;
                     self.cam.pos = self.world.player.pos;
                     self.panel = Panel::None;
                     self.tool = None;
                     self.show_help = false;
-                    self.toast("Game loaded");
+                    self.deconstruct = None;
+                    self.last_drag = None;
+                    self.paused = false;
+                    match loaded.failed {
+                        Some(failed) => self.toast(format!("{failed} failed to load · loaded {} instead", loaded.slot)),
+                        None => self.toast("Game loaded"),
+                    }
                 }
                 Err(e) => self.toast(e),
             }
