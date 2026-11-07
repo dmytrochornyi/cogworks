@@ -19,8 +19,8 @@ use super::super::tooltip::Tip;
 use super::super::widgets::Panel;
 use super::slide_px;
 
-/// Minimum width reserved for the legend column; it grows to fill the rest.
-const LEGEND_MIN_W: f32 = 200.0;
+/// Width of the fixed legend column, wide enough for its longest row.
+const LEGEND_W: f32 = 220.0;
 /// Vertical pitch of one legend row.
 const ROW_H: f32 = 22.0;
 /// Side of a legend colour swatch.
@@ -41,16 +41,26 @@ fn map_content(panel: Rect) -> Rect {
     Rect::new(panel.x + space::XL, top, panel.w - 2.0 * space::XL, (panel.bottom() - space::L - top).max(0.0))
 }
 
-/// The panel fills the window up to a `space::L` margin; the map is a square
-/// on the left sized from the available height and width, and the legend takes
-/// the remaining width on the right. Computed from the given size only, so it
-/// can be unit-tested without a window.
+/// The largest square map that fits the window: `space::L` margins all round,
+/// the titled panel's `HEADER` and padding (`space::XL` sides, `space::L`
+/// bottom), plus the fixed legend column and its gap. The panel is then sized
+/// to wrap exactly the map and legend and centred in the window. Computed from
+/// the given size only, so it can be unit-tested without a window.
 fn map_layout(sw: f32, sh: f32) -> MapLayout {
-    let panel = Rect::new(space::L, space::L, (sw - 2.0 * space::L).max(0.0), (sh - 2.0 * space::L).max(0.0));
+    // Height available to the map inside the panel's content area, and width
+    // after the fixed legend column and its gap are taken out of the content.
+    let max_h = (sh - 2.0 * space::L - HEADER - space::L).max(0.0);
+    let max_w = (sw - 2.0 * space::L - 2.0 * space::XL - LEGEND_W - space::L).max(0.0);
+    let map_size = max_h.min(max_w);
+    let panel = Rect::new(
+        ((sw - (2.0 * space::XL + map_size + space::L + LEGEND_W)) / 2.0).max(space::L),
+        ((sh - (HEADER + map_size + space::L)) / 2.0).max(space::L),
+        2.0 * space::XL + map_size + space::L + LEGEND_W,
+        HEADER + map_size + space::L,
+    );
     let content = map_content(panel);
-    let map_size = content.h.min(content.w - LEGEND_MIN_W - space::L).max(0.0);
     let map = Rect::new(content.x, content.y, map_size, map_size);
-    let legend = Rect::new(map.right() + space::L, content.y, content.right() - (map.right() + space::L), content.h);
+    let legend = Rect::new(map.right() + space::L, content.y, LEGEND_W, content.h);
     MapLayout { panel, map, legend }
 }
 
@@ -133,7 +143,9 @@ pub(crate) fn map_panel(g: &mut Game) {
     // Hovering the map shows the tile tooltip for the tile underneath; a click
     // does nothing (the panel itself already swallows the click).
     if let Some(tile) = tile_at(map, ui_mouse()) {
-        let rows = g.world.describe_rows(tile);
+        // Action hints (mine, place, choose) don't apply from the map, so they
+        // are dropped here; the world tooltip still shows them.
+        let rows = g.world.describe_rows_for_map(tile);
         if !rows.is_empty() {
             g.tooltip = Some(Tip::Card { icon: g.world.describe_icon(tile), rows });
         }
@@ -160,6 +172,24 @@ mod tests {
             assert!(l.legend.y >= l.panel.y && l.legend.bottom() <= l.panel.bottom() + 0.01, "{w}x{h}: legend outside panel");
             assert!(l.legend.x >= l.map.right(), "{w}x{h}: legend overlaps map");
         }
+    }
+
+    #[test]
+    fn map_panel_is_sized_to_content_and_centred() {
+        // At 16:9 the panel wraps the map and legend instead of filling the
+        // window, and sits centred horizontally.
+        let wide = map_layout(1600.0, 900.0);
+        assert!(wide.panel.w < 1600.0, "16:9: panel should not fill the window: {wide:?}");
+        assert!((wide.panel.center().x - 800.0).abs() < 0.01, "16:9: panel not centred: {wide:?}");
+        assert!((wide.map.w - wide.map.h).abs() < 0.01, "16:9: map not square: {wide:?}");
+
+        // At a narrow size the panel still fits inside the window margins.
+        let narrow = map_layout(820.0, 900.0);
+        assert!(narrow.panel.x >= space::L, "narrow: panel off the left: {narrow:?}");
+        assert!(narrow.panel.right() <= 820.0 - space::L + 0.01, "narrow: panel off the right: {narrow:?}");
+        assert!(narrow.panel.y >= space::L, "narrow: panel off the top: {narrow:?}");
+        assert!(narrow.panel.bottom() <= 900.0 - space::L + 0.01, "narrow: panel off the bottom: {narrow:?}");
+        assert!((narrow.map.w - narrow.map.h).abs() < 0.01, "narrow: map not square: {narrow:?}");
     }
 
     #[test]

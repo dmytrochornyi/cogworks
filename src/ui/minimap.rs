@@ -76,7 +76,10 @@ pub(super) fn minimap(g: &mut Game) {
     }
     rrect_lines(r, radius::SM, line::STRONG, EDGE);
     map_player_and_view(g, r);
-    if g.hud_active() && hovered(outer) {
+    // Only respond when no window covers the minimap: it draws before the
+    // panels, so without this guard a click that lands on a panel above it
+    // (e.g. a workbench recipe) would also open the map.
+    if g.hud_active() && g.panel == Panel::None && hovered(outer) {
         g.tooltip = Some(Tip::Card { icon: None, rows: vec![(None, "Map · N or click".to_string())] });
         if clicked(outer) {
             g.panel = Panel::Map;
