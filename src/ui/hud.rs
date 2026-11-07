@@ -14,9 +14,9 @@ use crate::Game;
 use super::metrics::{ui_height, ui_width};
 use super::primitives::{Elevation, clicked, hovered, rrect, rrect_lines, surface, surface_alpha};
 use super::style::{GAP, HONEY, KEY, LINE, PEACH, QUICK_SLOT, SLOT, TERRA, TEAL, TEXT, TEXT_DIM, TITLE};
-use super::text::{text, text_keys, text_w};
+use super::text::{text, text_h, text_keys, text_w};
 use super::tooltip::Tip;
-use super::widgets::{bar, slot};
+use super::widgets::{bar, key_badge, slot};
 
 pub(super) fn hud(g: &mut Game) {
     let a = g.assets.clone();
@@ -74,7 +74,7 @@ pub(super) fn quickbar(g: &mut Game) {
         let count = item.map(|i| g.world.player.inv.get(i));
         let selected = item.is_some() && g.tool == item;
         slot(&a, r, item, count, selected, count == Some(0), &mut g.clickables);
-        text(&a, &((k + 1) % 10).to_string(), r.x + 5.0, r.y + 3.0, TextSize::Xs, TEXT_DIM);
+        key_badge(&a, r, &((k + 1) % 10).to_string());
         if hovered(r)
             && let Some(i) = item
         {
@@ -94,6 +94,13 @@ pub(super) fn craft_queue(g: &mut Game) {
     let y = ui_height() - QUICK_SLOT - space::L - SLOT - 28.0;
     let total = 10.0 * QUICK_SLOT + 9.0 * GAP;
     let x0 = (ui_width() - total) / 2.0;
+    // A plaque behind the label and the queue keeps both readable over the
+    // world; the 13th column holds the "+N" count when more than 12 are queued.
+    let cols = if g.world.player.queue.len() > 12 { 13 } else { g.world.player.queue.len() };
+    let w = cols.max(1) as f32 * SLOT + cols.saturating_sub(1) as f32 * GAP;
+    let plaque = Rect::new(x0 - space::M, y - 28.0, w + 2.0 * space::M, SLOT + 28.0 + space::S);
+    surface(plaque, Elevation::Panel);
+    g.ui_rects.push(plaque);
     text(&a, "Crafting · click to cancel", x0, y - 20.0, TextSize::S, TEXT_DIM);
     let mut cancel = None;
     for (k, c) in g.world.player.queue.iter().take(12).enumerate() {
@@ -123,35 +130,64 @@ pub(super) fn craft_queue(g: &mut Game) {
     }
 }
 
+/// The quickbar's left edge: ten slots centred on the screen.
+fn quickbar_x0(ui_w: f32) -> f32 {
+    (ui_w - (10.0 * QUICK_SLOT + 9.0 * GAP)) / 2.0
+}
+
+/// Radio pill layout. The full label shows when it fits between the right
+/// screen edge and the quickbar; otherwise it collapses to its icon, lifted
+/// above the quickbar if even that would overlap. Returns the pill rect and the
+/// x where the label starts (`None` = icon only).
+fn radio_layout(ui_w: f32, ui_h: f32, text_w: f32) -> (Rect, Option<f32>) {
+    const ICON: f32 = 20.0;
+    const GAP: f32 = 8.0;
+    const PAD: f32 = 14.0;
+    const H: f32 = 44.0;
+    let q_right = quickbar_x0(ui_w) + 10.0 * QUICK_SLOT + 9.0 * GAP;
+    let qy = ui_h - QUICK_SLOT - space::L;
+
+    let full_w = ICON + GAP + text_w + 2.0 * PAD;
+    let full_x = ui_w - full_w - space::L;
+    if full_x >= q_right + space::S && full_x >= space::L {
+        let pill = Rect::new(full_x, ui_h - space::S - H, full_w, H);
+        return (pill, Some(full_x + PAD + ICON + GAP));
+    }
+
+    // Collapsed to the icon: bottom-right, lifted above the quickbar if the
+    // quickbar reaches the corner.
+    let w = ICON + 2.0 * PAD;
+    let x = ui_w - w - space::L;
+    let bottom = if x >= q_right + space::S { ui_h - space::S } else { qy - space::S };
+    (Rect::new(x, bottom - H, w, H), None)
+}
+
 pub(super) fn radio(g: &Game, a: &Assets) {
     let (prefix, suffix) = if g.music_on { ("Lo-fi radio · ", " to mute") } else { ("Radio off · ", " to play") };
-    let w = text_w(a, prefix, TextSize::S) + text_w(a, "M", TextSize::S) + text_w(a, suffix, TextSize::S);
-    let x = ui_width() - w - 46.0;
-    let total = 10.0 * QUICK_SLOT + 9.0 * GAP;
-    let qx = (ui_width() - total) / 2.0;
-    // On narrow screens the quickbar reaches the bottom-right corner; lift the
-    // radio above it instead of letting the two panels overlap.
-    let overlap = x + w > qx && x < qx + total;
-    let y = if overlap { ui_height() - QUICK_SLOT - space::L - 26.0 } else { ui_height() - 30.0 };
-    // A small paper pill keeps the label readable over the grass.
-    surface(Rect::new(x - 36.0, y - 20.0, w + 50.0, 44.0), Elevation::Toast);
+    let tw = text_w(a, prefix, TextSize::S) + text_w(a, "M", TextSize::S) + text_w(a, suffix, TextSize::S);
+    let (pill, text_x) = radio_layout(ui_width(), ui_height(), tw);
+    surface(pill, Elevation::Toast);
     let bob = if g.music_on { (g.time * 2.4).sin() * 2.0 } else { 0.0 };
     let tint = if g.music_on { WHITE } else { theme::alpha(theme::WHITE, 0.4) };
-    a.draw_centered("icon_note", vec2(x - 14.0, y - 5.0 + bob), Vec2::splat(20.0), 0.0, tint);
-    text(a, prefix, x, y, TextSize::S, TEXT_DIM);
-    let mx = x + text_w(a, prefix, TextSize::S);
-    text(a, "M", mx, y, TextSize::S, KEY);
-    text(a, suffix, mx + text_w(a, "M", TextSize::S), y, TextSize::S, TEXT_DIM);
+    a.draw_centered("icon_note", vec2(pill.x + 24.0, pill.center().y + bob), Vec2::splat(20.0), 0.0, tint);
+    if let Some(x) = text_x {
+        let y = pill.y + (pill.h - text_h(a, TextSize::S)) * 0.5;
+        text(a, prefix, x, y, TextSize::S, TEXT_DIM);
+        let mx = x + text_w(a, prefix, TextSize::S);
+        text(a, "M", mx, y, TextSize::S, KEY);
+        text(a, suffix, mx + text_w(a, "M", TextSize::S), y, TextSize::S, TEXT_DIM);
+    }
 }
 
 pub(super) fn toasts(g: &Game, a: &Assets) {
+    let base = toast_top(g.show_help, ui_width(), ui_height());
     for (k, (msg, t)) in g.toasts.iter().enumerate() {
         let alpha = t.min(1.0);
         let age = 3.0 - t;
         let slide = if age < 0.25 { (1.0 - age / 0.25) * -22.0 } else { 0.0 };
         let w = text_w(a, msg, TextSize::L);
         let x = (ui_width() - w) / 2.0;
-        let y = 140.0 + k as f32 * 42.0 + slide;
+        let y = base + k as f32 * 42.0 + slide;
         let r = Rect::new(x - 18.0, y - 6.0, w + 36.0, 38.0);
         surface_alpha(r, Elevation::Toast, alpha);
         rrect(
@@ -193,6 +229,16 @@ fn help_rect(ui_w: f32, ui_h: f32) -> Rect {
     let w = (HELP_MAX_TEXT_W + 2.0 * space::XL).min(ui_w - 2.0 * space::L).max(0.0);
     let h = (HELP_LINES.len() as f32 * LINE + 2.0 * space::L).min(ui_h - 142.0).max(0.0);
     Rect::new(space::L, 142.0, w, h)
+}
+
+/// The y position of the first toast: below the help note while it is open, so
+/// the two never overlap.
+fn toast_top(show_help: bool, ui_w: f32, ui_h: f32) -> f32 {
+    if show_help {
+        help_rect(ui_w, ui_h).bottom() + space::M
+    } else {
+        140.0
+    }
 }
 
 pub(super) fn help(g: &mut Game, a: &Assets) {
@@ -245,5 +291,30 @@ mod tests {
         assert!(r.w - space::XL >= HELP_MAX_TEXT_W, "rect too narrow for the help text");
         // On a normal window the whole note stays on screen.
         assert!(r.x + r.w <= 1440.0 && r.y + r.h <= 900.0, "note runs off screen: {r:?}");
+    }
+
+    #[test]
+    fn radio_never_overlaps_the_quickbar() {
+        for (w, h) in [(1600.0, 900.0), (1000.0, 900.0), (700.0, 900.0)] {
+            let (pill, _) = radio_layout(w, h, 170.0);
+            let qx = quickbar_x0(w);
+            let q = Rect::new(qx, h - QUICK_SLOT - space::L, 10.0 * QUICK_SLOT + 9.0 * GAP, QUICK_SLOT);
+            let overlap = pill.x < q.right() && pill.right() > q.x && pill.y < q.bottom() && pill.bottom() > q.y;
+            assert!(!overlap, "{w}x{h}: radio {pill:?} overlaps quickbar {q:?}");
+            assert!(pill.right() <= w - space::L + 0.01, "{w}: radio runs off the right edge");
+            assert!(pill.x >= space::L, "{w}: radio runs off the left edge");
+        }
+        // Wide: full label; narrow: collapsed to the icon.
+        assert!(radio_layout(1600.0, 900.0, 170.0).1.is_some());
+        assert!(radio_layout(700.0, 900.0, 170.0).1.is_none());
+    }
+
+    #[test]
+    fn toasts_sit_below_the_help_note() {
+        let (w, h) = (1440.0, 900.0);
+        let help_bottom = help_rect(w, h).bottom();
+        let below = toast_top(true, w, h);
+        assert!(below >= help_bottom, "toasts must start below the note");
+        assert_eq!(toast_top(false, w, h), 140.0);
     }
 }

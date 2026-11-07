@@ -17,18 +17,32 @@ use super::widgets::{Panel, button, primary_button};
 
 const BTN_H: f32 = 46.0;
 const CARD_W: f32 = 380.0;
+const PAUSE_H: f32 = 400.0;
 
-/// Darkens the world behind a menu: a flat veil plus heavier top and bottom bands.
+/// Darkens the world behind a menu: a flat veil plus smooth top and bottom
+/// falloff, drawn as vertex-coloured quads so the shading never bands.
 fn veil(strength: f32) {
     let (w, h) = (ui_width(), ui_height());
     draw_rectangle(0.0, 0.0, w, h, theme::rgba(0.10, 0.06, 0.04, 0.28 * strength));
-    for k in 0..24 {
-        let f = k as f32 / 24.0;
-        let a = (1.0 - f).powi(2) * 0.35 * strength;
-        let band = h * 0.3 / 24.0;
-        draw_rectangle(0.0, f * h * 0.3, w, band + 1.0, theme::rgba(0.10, 0.06, 0.04, a));
-        draw_rectangle(0.0, h - (f + 1.0 / 24.0) * h * 0.3, w, band + 1.0, theme::rgba(0.10, 0.06, 0.04, a));
-    }
+    let band = h * 0.3;
+    let peak = 0.35 * strength;
+    gradient(0.0, 0.0, w, band, peak, 0.0);
+    gradient(0.0, h - band, w, band, 0.0, peak);
+}
+
+/// A vertical alpha gradient over the `w`×`h` rectangle at `(x, y)`: `top`
+/// alpha at its top edge fading to `bottom` alpha at its bottom edge. One quad
+/// of vertex colours, so translucent shading stays perfectly smooth.
+fn gradient(x: f32, y: f32, w: f32, h: f32, top: f32, bottom: f32) {
+    let col = |a: f32| theme::rgba(0.10, 0.06, 0.04, a);
+    let vertices = vec![
+        Vertex::new(x, y, 0.0, 0.0, 0.0, col(top)),
+        Vertex::new(x + w, y, 0.0, 0.0, 0.0, col(top)),
+        Vertex::new(x + w, y + h, 0.0, 0.0, 0.0, col(bottom)),
+        Vertex::new(x, y + h, 0.0, 0.0, 0.0, col(bottom)),
+    ];
+    let indices = vec![0, 1, 2, 0, 2, 3];
+    draw_mesh(&Mesh { vertices, indices, texture: None });
 }
 
 /// A short line about the game in memory, for under the Continue button.
@@ -40,6 +54,27 @@ fn save_summary(g: &Game) -> String {
         s.push_str(" · peaceful");
     }
     s
+}
+
+/// The logo's drop-in geometry: `(top, width, height)`, used for both drawing
+/// and testing the title card's fit on small windows.
+fn logo_layout(w: f32, h: f32, t: f32) -> (f32, f32, f32) {
+    let lw = (w * 0.5).clamp(320.0, 640.0);
+    let lh = lw * 208.0 / 640.0;
+    let ly = (h * 0.1).max(space::L) - (1.0 - t) * 30.0;
+    (ly, lw, lh)
+}
+
+/// The main-menu card height: four buttons, plus the save summary row when a
+/// game exists to continue.
+fn main_card_h(has_game: bool) -> f32 {
+    let rows = 4.0;
+    space::L * 2.0 + rows * (BTN_H + space::S + 2.0) + if has_game { 22.0 } else { 0.0 }
+}
+
+/// The pause card's top edge, so the card stays on screen at small heights.
+fn pause_top(h: f32) -> f32 {
+    (h * 0.22).max(space::L)
 }
 
 /// Stacks full-width buttons down a card, returning each one's rect.
@@ -64,9 +99,7 @@ pub(super) fn title(g: &mut Game, page: MenuPage) {
     let t = ease_out(g.menu_fade);
 
     // Logo, dropping in as the menu opens.
-    let lw = (w * 0.5).clamp(320.0, 640.0);
-    let lh = lw * 208.0 / 640.0;
-    let ly = (h * 0.1).max(space::L) - (1.0 - t) * 30.0;
+    let (ly, lw, lh) = logo_layout(w, h, t);
     a.draw("logo", vec2((w - lw) / 2.0, ly), vec2(lw, lh), Default::default());
     let tagline = "A cozy automation game: mine, build, research, and wake the Grand Engine";
     let tw = text_w(&a, tagline, TextSize::S);
@@ -90,9 +123,7 @@ pub(super) fn title(g: &mut Game, page: MenuPage) {
 fn title_main(g: &mut Game, top: f32) {
     let a = g.assets.clone();
     let has_game = g.has_game;
-    let rows = 4.0;
-    let card_h = space::L * 2.0 + rows * (BTN_H + space::S + 2.0) + if has_game { 22.0 } else { 0.0 };
-    let r = Rect::new((ui_width() - CARD_W) / 2.0, top, CARD_W, card_h);
+    let r = Rect::new((ui_width() - CARD_W) / 2.0, top, CARD_W, main_card_h(has_game));
     surface(r, Elevation::Panel);
     g.ui_rects.push(r);
     let mut s = Stack { x: r.x + space::XL, y: r.y + space::L + 4.0, w: r.w - 2.0 * space::XL };
@@ -144,7 +175,7 @@ fn new_game_page(g: &mut Game, top: f32) {
     text(&a, "No attacks: just build (toggle any time with P)", peaceful.x + space::L, peaceful.y + 31.0, TextSize::Xs, TEXT_DIM);
     s.y += space::XS;
     let note = if g.has_game {
-        "Your current autosave is kept as cogworks_autosave.prev.json."
+        "Your last autosave is kept as a backup."
     } else {
         "A fresh meadow, a few tools and a long way to go."
     };
@@ -234,12 +265,12 @@ pub(super) fn pause(g: &mut Game, page: MenuPage) {
     // pressed keys only at end of frame, so it would otherwise close at once.
     let just_opened = g.menu_just_opened;
     g.menu_just_opened = false;
-    let top = (ui_height() * 0.22).max(space::L);
+    let top = pause_top(ui_height());
     if page == MenuPage::Settings {
         settings_page(g, top, Screen::Paused(MenuPage::Main));
         return;
     }
-    let r = Rect::new((ui_width() - CARD_W) / 2.0, top, CARD_W, 400.0);
+    let r = Rect::new((ui_width() - CARD_W) / 2.0, top, CARD_W, PAUSE_H);
     let (content, closed) = Panel::new(r).title("Paused").closable().show(g);
     let mut s = Stack { x: content.x, y: content.y, w: content.w };
     let resume = primary_button(&a, s.next(BTN_H), "Resume", true, &mut g.clickables);
@@ -265,5 +296,28 @@ pub(super) fn pause(g: &mut Game, page: MenuPage) {
         g.to_title();
     } else if quit && g.save_game() {
         g.quit = true;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The title and pause cards must fit on a small window: a 1000×620
+    /// physical window at the 0.8 UI scale is 1250×775 in logical space.
+    #[test]
+    fn cards_fit_in_a_small_window() {
+        let (w, h) = (1250.0, 775.0);
+        let (ly, _, lh) = logo_layout(w, h, 1.0);
+        let top = ly + lh + space::XL + space::L;
+        assert!(
+            top + main_card_h(true) <= h - space::L,
+            "title card runs off: top {top}, height {}",
+            main_card_h(true)
+        );
+        assert!(
+            pause_top(h) + PAUSE_H <= h - space::L,
+            "pause card runs off"
+        );
     }
 }

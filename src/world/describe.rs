@@ -50,7 +50,8 @@ impl World {
         match &e.state {
             State::Belt(b) => {
                 let n: usize = b.lanes.iter().map(Vec::len).sum();
-                lines.push((None, format!("Carrying {n} item(s)")));
+                let items = if n == 1 { "item" } else { "items" };
+                lines.push((None, format!("Carrying {n} {items}")));
                 if e.kind == Kind::Tunnel {
                     lines.push((None, match (b.exit, b.partner) {
                         (_, None) => format!("Unpaired - place another within {TUNNEL_MAX} tiles"),

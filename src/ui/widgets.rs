@@ -11,7 +11,7 @@ use crate::Game;
 
 use super::primitives::{Elevation, circle, circle_lines, clicked, hovered, rrect, rrect_lines, surface};
 use super::style::{BG, BG2, EDGE, HEADER, HEADER_BAND, KEY, SLOT_WELL, TEXT, TEXT_DIM};
-use super::text::{text, text_in, text_w};
+use super::text::{text, text_baseline, text_h, text_in, text_w};
 
 pub(super) fn bar(r: Rect, frac: f32, col: Color) {
     rrect(r, r.h / 2.0, SLOT_WELL);
@@ -93,6 +93,17 @@ pub(super) fn slot(a: &Assets, r: Rect, item: Option<Item>, count: Option<u32>, 
     clicked(r)
 }
 
+/// A small key badge in a slot's top-left corner: the slot number in key gold
+/// on a paper chip, so it reads over any icon.
+pub(super) fn key_badge(a: &Assets, r: Rect, key: &str) {
+    let bw = text_w(a, key, TextSize::Xs) + 8.0;
+    let bh = 16.0;
+    let br = Rect::new(r.x + 2.0, r.y + 2.0, bw, bh);
+    rrect(br, radius::SM, BG);
+    rrect_lines(br, radius::SM, line::HAIR, EDGE);
+    text_in(a, key, br, TextSize::Xs, KEY);
+}
+
 pub(super) fn recipe_icon(a: &Assets, r: Rect, recipe: usize, selected: bool, unavailable: bool, clickables: &mut Vec<Rect>) {
     let rec = &RECIPES[recipe];
     slot(a, r, rec.main_output(), None, selected, unavailable, clickables);
@@ -169,12 +180,14 @@ impl<'a> Panel<'a> {
                 circle(vec2(x, band.center().y), 2.6, theme::color(HEADER_INK));
                 circle(vec2(x - 0.6, band.center().y - 0.6), 1.5, theme::color(HEADER_RIVET));
             }
-            let ty = band_mid - 15.0;
+            let ty = band.y + ((band.h - 3.0) - text_h(&a, TextSize::Xl)) * 0.5;
             text(&a, t, self.r.x + space::XL + 1.0, ty + 2.0, TextSize::Xl, theme::alpha(HEADER_INK, 0.6));
             text(&a, t, self.r.x + space::XL, ty, TextSize::Xl, theme::color(HEADER_TEXT));
             if let Some(s) = self.subtitle {
                 let w = text_w(&a, t, TextSize::Xl);
-                text(&a, s, self.r.x + space::XL + w + space::L, ty + 9.0, TextSize::S, theme::alpha(HEADER_TEXT, 0.8));
+                let base = ty + text_baseline(&a, TextSize::Xl);
+                let sy = base - text_baseline(&a, TextSize::S);
+                text(&a, s, self.r.x + space::XL + w + space::L, sy, TextSize::S, theme::alpha(HEADER_TEXT, 0.8));
             }
         } else if let Some(s) = self.subtitle {
             text(&a, s, self.r.x + space::XL, self.r.y + space::L + 8.0, TextSize::S, TEXT_DIM);

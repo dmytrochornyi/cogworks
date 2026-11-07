@@ -38,7 +38,9 @@ fn research_layout(sw: f32, sh: f32) -> ResearchLayout {
     let grid_h = rows as f32 * (card_h + GAP) - GAP;
     let want_h = HEADER + grid_h + 2.0 * space::L;
     let height = want_h.min(sh - 2.0 * space::L);
-    let view_h = ((height - HEADER - 2.0 * space::L) - 8.0).max(1.0);
+    // The view is exactly the panel's content area, so when the panel is tall
+    // enough for the whole grid, `max_scroll` is 0 and there is no dead strip.
+    let view_h = (height - HEADER - space::L).max(1.0);
     let card_w = (inner_w - (cols as f32 - 1.0) * GAP) / cols as f32;
     ResearchLayout {
         width,
@@ -194,5 +196,29 @@ mod tests {
                 l.view_h
             );
         }
+    }
+
+    #[test]
+    fn research_grid_fits_without_scrolling_when_there_is_room() {
+        // A tall screen holds the whole grid: no scroll, and the view is big
+        // enough that the last row is fully visible (no dead strip).
+        let l = research_layout(1600.0, 1200.0);
+        assert_eq!(l.max_scroll, 0.0, "tall screen should not scroll, got {}", l.max_scroll);
+        assert!(l.grid_h <= l.view_h + 0.01, "grid clipped in a tall screen");
+    }
+
+    #[test]
+    fn research_grid_scrolls_to_every_card() {
+        // A short screen clips the grid; scrolling to the maximum must bring the
+        // last row's bottom to the bottom of the view.
+        let l = research_layout(1000.0, 500.0);
+        assert!(l.max_scroll > 0.0, "clipped layout must scroll");
+        assert!(
+            l.grid_h - l.max_scroll <= l.view_h + 0.01,
+            "max scroll {} leaves last row off-screen (grid {} view {})",
+            l.max_scroll,
+            l.grid_h,
+            l.view_h
+        );
     }
 }
