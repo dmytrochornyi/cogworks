@@ -146,6 +146,12 @@ impl Game {
         }
     }
 
+    /// True while the HUD should respond to input: playing and not covered by
+    /// the win panel, which swallows every click until it is dismissed.
+    pub(crate) fn hud_active(&self) -> bool {
+        self.screen == Screen::Playing && !(self.world.won && !self.world.won_seen)
+    }
+
     /// Back to play from a menu.
     pub(crate) fn resume(&mut self) {
         if matches!(self.screen, Screen::Title(_)) {

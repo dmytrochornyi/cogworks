@@ -80,7 +80,7 @@ pub(super) fn quickbar(g: &mut Game) {
         {
             g.tooltip = Some(Tip::item(i, &[&format!("Key {}", (k + 1) % 10)]));
         }
-        if clicked(r) && g.screen == Screen::Playing {
+        if clicked(r) && g.hud_active() {
             g.select_slot(k);
         }
     }
@@ -117,7 +117,7 @@ pub(super) fn craft_queue(g: &mut Game) {
                 None => Tip::Card { icon: None, rows: vec![(None, rec.name.to_string())] },
             });
         }
-        if clicked(r) && g.screen == Screen::Playing {
+        if clicked(r) && g.hud_active() {
             cancel = Some(k);
         }
         g.ui_rects.push(r);
@@ -277,7 +277,7 @@ pub(super) fn overlays(g: &mut Game, a: &Assets) {
         let msg = format!("Cog took a tumble · back in {:.0}…", g.world.player.respawn.ceil());
         banner(&msg, PEACH, ui_height() / 2.0 - 40.0);
     }
-    if g.world.won && !g.world.won_seen {
+    if g.world.won && !g.world.won_seen && g.screen == Screen::Playing {
         win_panel(g, a);
     }
     if g.paused {
@@ -286,13 +286,15 @@ pub(super) fn overlays(g: &mut Game, a: &Assets) {
 }
 
 /// The one-time win panel: title, days taken, research count and a "Keep
-/// building" button. It is drawn only while playing (never over the title
-/// screen), and while open it swallows every click so the world stays
-/// untouched behind it. `won_seen` is set when the player dismisses it.
+/// building" button. It is drawn only while playing, once (`won` set but
+/// `won_seen` still false), and while it shows it closes any open window and
+/// the HUD ignores input so nothing behind it reacts. The button sets
+/// `won_seen`.
 fn win_panel(g: &mut Game, a: &Assets) {
+    g.panel = crate::game::Panel::None;
     let (w, h) = (ui_width(), ui_height());
-    let pw = 460.0;
-    let ph = 220.0;
+    let pw = 540.0;
+    let ph = 190.0;
     let r = Rect::new((w - pw) / 2.0, (h - ph) / 2.0, pw, ph);
     let (content, _closed) = Panel::new(r).title("The Grand Engine hums awake").show(g);
     let day = (g.world.time / DAY_LENGTH).floor() as i32 + 1;
@@ -330,8 +332,8 @@ mod tests {
 
     #[test]
     fn craft_plaque_fits_the_label() {
-        // A single slot is 48 px wide; a long label must widen the plaque
-        // enough to cover it with padding on both sides.
+        // A long label must widen the plaque enough to cover it with padding
+        // on both sides.
         let label = 220.0;
         assert_eq!(craft_plaque_w(label, 1), label + 2.0 * space::M);
         // With nothing to widen it, the plaque is the slots plus padding.
