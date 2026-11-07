@@ -126,6 +126,7 @@ async fn main() {
         game.panel = match std::env::var("COGWORKS_PANEL").as_deref() {
             Ok("research") => Panel::Research,
             Ok("inventory") => Panel::Inventory,
+            Ok("map") => Panel::Map,
             Ok("building") => {
                 let crafters = || {
                     game.world

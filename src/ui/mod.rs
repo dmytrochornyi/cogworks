@@ -49,6 +49,7 @@ pub fn draw(g: &mut Game) {
     match g.panel {
         OpenPanel::Inventory => panels::inventory::inventory_panel(g),
         OpenPanel::Research => panels::research::research_panel(g),
+        OpenPanel::Map => panels::map::map_panel(g),
         OpenPanel::Building(id, _) => panels::building::building_panel(g, id),
         OpenPanel::None => {}
     }

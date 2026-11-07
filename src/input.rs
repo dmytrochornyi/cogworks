@@ -240,6 +240,9 @@ impl Game {
         if is_key_pressed(KeyCode::T) {
             self.panel = if self.panel == Panel::Research { Panel::None } else { Panel::Research };
         }
+        if is_key_pressed(KeyCode::N) {
+            self.panel = if self.panel == Panel::Map { Panel::None } else { Panel::Map };
+        }
         if is_key_pressed(KeyCode::H) || is_key_pressed(KeyCode::F1) {
             self.show_help = !self.show_help;
         }

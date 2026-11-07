@@ -217,7 +217,7 @@ pub(super) fn toasts(g: &Game, a: &Assets) {
 const HELP_LINES: &[(&str, TextSize, Color)] = &[
     ("Welcome to Cogworks", TextSize::Xl, TITLE),
     ("", TextSize::M, TEXT),
-    ("WASD · walk          Wheel · zoom          E · backpack & workbench          T · research", TextSize::M, TEXT),
+    ("WASD · walk      Wheel · zoom      E · backpack & workbench      T · research      N · map", TextSize::M, TEXT),
     ("1–0 · quickbar      R · rotate      Q · copy building or empty hands      Esc · close", TextSize::M, TEXT),
     ("Left click · build (drag belts, pipes, walls) or open a building", TextSize::M, TEXT),
     ("Right hold · mine ore by hand, or pick a building back up", TextSize::M, TEXT),

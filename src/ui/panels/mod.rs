@@ -12,6 +12,7 @@ use crate::theme::space;
 
 pub(super) mod building;
 pub(super) mod inventory;
+pub(super) mod map;
 pub(super) mod research;
 
 /// Pixel offset of the open modal panel during its drop-in animation.

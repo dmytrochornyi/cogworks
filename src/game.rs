@@ -34,6 +34,8 @@ pub enum Panel {
     None,
     Inventory,
     Research,
+    /// The full-window world map, toggled with N or by clicking the minimap.
+    Map,
     /// Entity id and its position, so a reused id isn't mistaken for the old building.
     Building(usize, IVec2),
 }

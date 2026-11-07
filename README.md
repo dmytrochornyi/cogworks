@@ -55,7 +55,7 @@ embedded in a single executable.
 - **Atmosphere**: a day-to-dusk cycle with real-time lighting, a lo-fi radio, foley, and gentle environmental ambience (soft bells, mallets, pads and water by day; crickets at night)
 - **Menus**: a title screen with Continue and New game (normal or peaceful), a pause menu, and settings for music, ambience, effects, look and fullscreen
 - **A hovering robot**: glides smoothly and turns to face all eight directions as it moves
-- **Quality of life**: quickbar binding, building copy (Q), icon tooltips, minimap, save/load and autosave
+- **Quality of life**: quickbar binding, building copy (Q), icon tooltips, minimap, full-window world map, save/load and autosave
 
 ## Download
 
@@ -99,6 +99,7 @@ To skip the title screen, run `cogworks <save file>`.
 | <kbd>Q</kbd> | Copy the hovered building, or empty your hands |
 | <kbd>E</kbd> / <kbd>Tab</kbd> | Backpack and workbench |
 | <kbd>T</kbd> | Research |
+| <kbd>N</kbd> | Map (or click the minimap) |
 | <kbd>Esc</kbd> | Close the panel, put the tool away, or open the pause menu |
 | <kbd>Space</kbd> | Pause |
 | <kbd>O</kbd> | Pollution overlay |
