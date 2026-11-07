@@ -16,7 +16,7 @@ use super::primitives::{Elevation, clicked, hovered, rrect, rrect_lines, surface
 use super::style::{GAP, HONEY, KEY, LINE, PEACH, QUICK_SLOT, SLOT, TERRA, TEAL, TEXT, TEXT_DIM, TITLE};
 use super::text::{text, text_h, text_keys, text_w};
 use super::tooltip::Tip;
-use super::widgets::{bar, key_badge, slot};
+use super::widgets::{Panel, bar, key_badge, primary_button, slot};
 
 pub(super) fn hud(g: &mut Game) {
     let a = g.assets.clone();
@@ -97,11 +97,12 @@ pub(super) fn craft_queue(g: &mut Game) {
     // A plaque behind the label and the queue keeps both readable over the
     // world; the 13th column holds the "+N" count when more than 12 are queued.
     let cols = if g.world.player.queue.len() > 12 { 13 } else { g.world.player.queue.len() };
-    let w = cols.max(1) as f32 * SLOT + cols.saturating_sub(1) as f32 * GAP;
-    let plaque = Rect::new(x0 - space::M, y - 28.0, w + 2.0 * space::M, SLOT + 28.0 + space::S);
+    let label = "Crafting · click to cancel";
+    let label_w = text_w(&a, label, TextSize::S);
+    let plaque = Rect::new(x0 - space::M, y - 28.0, craft_plaque_w(label_w, cols), SLOT + 28.0 + space::S);
     surface(plaque, Elevation::Panel);
     g.ui_rects.push(plaque);
-    text(&a, "Crafting · click to cancel", x0, y - 20.0, TextSize::S, TEXT_DIM);
+    text(&a, label, x0, y - 20.0, TextSize::S, TEXT_DIM);
     let mut cancel = None;
     for (k, c) in g.world.player.queue.iter().take(12).enumerate() {
         let r = Rect::new(x0 + k as f32 * (SLOT + GAP), y, SLOT, SLOT);
@@ -130,9 +131,22 @@ pub(super) fn craft_queue(g: &mut Game) {
     }
 }
 
+/// The craft-queue plaque's width: the queued slots plus the "Crafting · click
+/// to cancel" label, whichever is wider, with `space::M` padding on each side
+/// so the label never runs off the plaque when few items are queued.
+fn craft_plaque_w(label_w: f32, cols: usize) -> f32 {
+    let slots_w = cols.max(1) as f32 * SLOT + cols.saturating_sub(1) as f32 * GAP;
+    slots_w.max(label_w) + 2.0 * space::M
+}
+
+/// The quickbar's full width: ten slots and the nine gaps between them.
+fn quickbar_w() -> f32 {
+    10.0 * QUICK_SLOT + 9.0 * GAP
+}
+
 /// The quickbar's left edge: ten slots centred on the screen.
 fn quickbar_x0(ui_w: f32) -> f32 {
-    (ui_w - (10.0 * QUICK_SLOT + 9.0 * GAP)) / 2.0
+    (ui_w - quickbar_w()) / 2.0
 }
 
 /// Radio pill layout. The full label shows when it fits between the right
@@ -141,17 +155,17 @@ fn quickbar_x0(ui_w: f32) -> f32 {
 /// x where the label starts (`None` = icon only).
 fn radio_layout(ui_w: f32, ui_h: f32, text_w: f32) -> (Rect, Option<f32>) {
     const ICON: f32 = 20.0;
-    const GAP: f32 = 8.0;
+    const ICON_GAP: f32 = 8.0;
     const PAD: f32 = 14.0;
     const H: f32 = 44.0;
-    let q_right = quickbar_x0(ui_w) + 10.0 * QUICK_SLOT + 9.0 * GAP;
+    let q_right = quickbar_x0(ui_w) + quickbar_w();
     let qy = ui_h - QUICK_SLOT - space::L;
 
-    let full_w = ICON + GAP + text_w + 2.0 * PAD;
+    let full_w = ICON + ICON_GAP + text_w + 2.0 * PAD;
     let full_x = ui_w - full_w - space::L;
     if full_x >= q_right + space::S && full_x >= space::L {
         let pill = Rect::new(full_x, ui_h - space::S - H, full_w, H);
-        return (pill, Some(full_x + PAD + ICON + GAP));
+        return (pill, Some(full_x + PAD + ICON + ICON_GAP));
     }
 
     // Collapsed to the icon: bottom-right, lifted above the quickbar if the
@@ -251,7 +265,7 @@ pub(super) fn help(g: &mut Game, a: &Assets) {
     g.ui_rects.push(r);
 }
 
-pub(super) fn overlays(g: &Game, a: &Assets) {
+pub(super) fn overlays(g: &mut Game, a: &Assets) {
     let banner = |msg: &str, col: Color, y: f32| {
         let w = text_w(a, msg, TextSize::Xxl);
         let x = (ui_width() - w) / 2.0;
@@ -263,12 +277,33 @@ pub(super) fn overlays(g: &Game, a: &Assets) {
         let msg = format!("Cog took a tumble · back in {:.0}…", g.world.player.respawn.ceil());
         banner(&msg, PEACH, ui_height() / 2.0 - 40.0);
     }
-    if g.world.won {
-        banner("The Grand Engine hums awake · you did it", TITLE, 92.0);
+    if g.world.won && !g.world.won_seen {
+        win_panel(g, a);
     }
     if g.paused {
         banner("Paused", TEXT, ui_height() / 2.0 - 110.0);
     }
+}
+
+/// The one-time win panel: title, days taken, research count and a "Keep
+/// building" button. It is drawn only while playing (never over the title
+/// screen), and while open it swallows every click so the world stays
+/// untouched behind it. `won_seen` is set when the player dismisses it.
+fn win_panel(g: &mut Game, a: &Assets) {
+    let (w, h) = (ui_width(), ui_height());
+    let pw = 460.0;
+    let ph = 220.0;
+    let r = Rect::new((w - pw) / 2.0, (h - ph) / 2.0, pw, ph);
+    let (content, _closed) = Panel::new(r).title("The Grand Engine hums awake").show(g);
+    let day = (g.world.time / DAY_LENGTH).floor() as i32 + 1;
+    let done = g.world.research.done.iter().filter(|d| **d).count();
+    text(a, &format!("Day {day} · {done}/{} researched", TECHS.len()), content.x, content.y + 4.0, TextSize::M, TEXT);
+    let btn = Rect::new(content.x, content.bottom() - 46.0, content.w, 46.0);
+    if primary_button(a, btn, "Keep building", true, &mut g.clickables) {
+        g.world.won_seen = true;
+    }
+    // Modal while open: clicks must not reach the world.
+    g.ui_rects.push(Rect::new(0.0, 0.0, w, h));
 }
 
 #[cfg(test)]
@@ -291,6 +326,16 @@ mod tests {
         assert!(r.w - space::XL >= HELP_MAX_TEXT_W, "rect too narrow for the help text");
         // On a normal window the whole note stays on screen.
         assert!(r.x + r.w <= 1440.0 && r.y + r.h <= 900.0, "note runs off screen: {r:?}");
+    }
+
+    #[test]
+    fn craft_plaque_fits_the_label() {
+        // A single slot is 48 px wide; a long label must widen the plaque
+        // enough to cover it with padding on both sides.
+        let label = 220.0;
+        assert_eq!(craft_plaque_w(label, 1), label + 2.0 * space::M);
+        // With nothing to widen it, the plaque is the slots plus padding.
+        assert_eq!(craft_plaque_w(0.0, 12), 12.0 * SLOT + 11.0 * GAP + 2.0 * space::M);
     }
 
     #[test]

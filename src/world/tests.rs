@@ -301,6 +301,20 @@ fn save_round_trip() {
 }
 
 #[test]
+fn old_save_without_won_seen_loads_as_unseen() {
+    // A save written before the win panel existed has no `won_seen` field, so
+    // the panel must still show once: the field defaults to false.
+    let mut w = World::new(7);
+    w.won = true;
+    w.won_seen = true;
+    let mut v = serde_json::to_value(&w).unwrap();
+    v.as_object_mut().unwrap().remove("won_seen");
+    let back: World = serde_json::from_value(v).unwrap();
+    assert!(back.won, "the won flag must survive the round trip");
+    assert!(!back.won_seen, "a save without won_seen loads as unseen");
+}
+
+#[test]
 fn deconstructing_tunnel_exit_refunds_underground_items() {
     let mut w = blank();
     build(&mut w, Kind::Tunnel, ivec2(10, 10), Dir::E);

@@ -254,53 +254,6 @@ impl Default for SpriteParams {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// Width and height from the IHDR chunk of a PNG, per the big-endian u32s at
-    /// bytes 16..24 (after the 8-byte signature and the 8-byte IHDR prefix).
-    fn png_size(bytes: &[u8]) -> (u32, u32) {
-        assert!(bytes.len() >= 24, "sprite is too small to be a PNG");
-        assert_eq!(&bytes[0..8], b"\x89PNG\r\n\x1a\n", "sprite is not a PNG");
-        let w = u32::from_be_bytes(bytes[16..20].try_into().unwrap());
-        let h = u32::from_be_bytes(bytes[20..24].try_into().unwrap());
-        (w, h)
-    }
-
-    /// The grade shader must not reintroduce film grain or a per-frame noise term.
-    #[test]
-    fn composite_has_no_grain() {
-        assert!(!COMPOSITE.contains("fract(sin("), "COMPOSITE must not add film grain");
-        assert!(!COMPOSITE.contains("Params.x"), "COMPOSITE must not read a noise param");
-    }
-
-    #[test]
-    fn sprite_sizes_match_baseline() {
-        let mut baseline: Vec<(String, (u32, u32))> = include_str!("sprite_sizes.txt")
-            .lines()
-            .map(|l| {
-                let mut it = l.split_whitespace();
-                let name = it.next().expect("name").to_string();
-                let w: u32 = it.next().expect("width").parse().expect("width is an int");
-                let h: u32 = it.next().expect("height").parse().expect("height is an int");
-                assert!(it.next().is_none(), "extra fields on the line for {name}");
-                (name, (w, h))
-            })
-            .collect();
-
-        let mut actual: Vec<(String, (u32, u32))> = SPRITES
-            .iter()
-            .map(|(name, bytes)| (name.to_string(), png_size(bytes)))
-            .collect();
-
-        baseline.sort();
-        actual.sort();
-
-        assert_eq!(baseline, actual, "sprite sizes drifted from the baseline");
-    }
-}
-
 const VERTEX: &str = r#"#version 100
 attribute vec3 position;
 attribute vec2 texcoord;
@@ -643,3 +596,50 @@ void main() {
     gl_FragColor = vec4(clamp(col, 0.0, 1.0), 1.0);
 }
 "#;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Width and height from the IHDR chunk of a PNG, per the big-endian u32s at
+    /// bytes 16..24 (after the 8-byte signature and the 8-byte IHDR prefix).
+    fn png_size(bytes: &[u8]) -> (u32, u32) {
+        assert!(bytes.len() >= 24, "sprite is too small to be a PNG");
+        assert_eq!(&bytes[0..8], b"\x89PNG\r\n\x1a\n", "sprite is not a PNG");
+        let w = u32::from_be_bytes(bytes[16..20].try_into().unwrap());
+        let h = u32::from_be_bytes(bytes[20..24].try_into().unwrap());
+        (w, h)
+    }
+
+    /// The grade shader must not reintroduce film grain or a per-frame noise term.
+    #[test]
+    fn composite_has_no_grain() {
+        assert!(!COMPOSITE.contains("fract(sin("), "COMPOSITE must not add film grain");
+        assert!(!COMPOSITE.contains("Params.x"), "COMPOSITE must not read a noise param");
+    }
+
+    #[test]
+    fn sprite_sizes_match_baseline() {
+        let mut baseline: Vec<(String, (u32, u32))> = include_str!("sprite_sizes.txt")
+            .lines()
+            .map(|l| {
+                let mut it = l.split_whitespace();
+                let name = it.next().expect("name").to_string();
+                let w: u32 = it.next().expect("width").parse().expect("width is an int");
+                let h: u32 = it.next().expect("height").parse().expect("height is an int");
+                assert!(it.next().is_none(), "extra fields on the line for {name}");
+                (name, (w, h))
+            })
+            .collect();
+
+        let mut actual: Vec<(String, (u32, u32))> = SPRITES
+            .iter()
+            .map(|(name, bytes)| (name.to_string(), png_size(bytes)))
+            .collect();
+
+        baseline.sort();
+        actual.sort();
+
+        assert_eq!(baseline, actual, "sprite sizes drifted from the baseline");
+    }
+}

@@ -293,7 +293,7 @@ pub(super) fn pause(g: &mut Game, page: MenuPage) {
     } else if settings {
         g.screen = Screen::Paused(MenuPage::Settings);
     } else if menu {
-        g.to_title();
+        g.go_to_title();
     } else if quit && g.save_game() {
         g.quit = true;
     }

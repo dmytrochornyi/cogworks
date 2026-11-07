@@ -202,7 +202,7 @@ impl Game {
     }
 
     /// Leaves play for the title screen, autosaving so Continue picks up here.
-    pub(crate) fn to_title(&mut self) {
+    pub(crate) fn go_to_title(&mut self) {
         if self.autosave
             && self.world.player.alive()
             && let Err(e) = save::save(&mut self.world, save::AUTOSAVE_PATH)

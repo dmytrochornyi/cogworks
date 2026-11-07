@@ -136,6 +136,8 @@ impl World {
                 if *cores >= ENGINE_CORES && !self.won {
                     self.won = true;
                     self.events.push("The Grand Engine awakens! You win!".into());
+                    // The win panel appears with the research jingle.
+                    self.sounds.push(Sfx::Research);
                 }
             }
             _ => {}
