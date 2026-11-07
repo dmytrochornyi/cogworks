@@ -57,8 +57,8 @@ pub fn preserve_autosave() -> Result<(), String> {
     if fs::metadata(AUTOSAVE_PATH).is_err() {
         return Ok(());
     }
-    // `fs::rename` won't replace an existing destination on Windows.
-    let _ = fs::remove_file(PREV_AUTOSAVE_PATH);
+    // `fs::rename` replaces an existing destination on every platform, so a
+    // failed rename leaves the previous backup untouched rather than deleted.
     fs::rename(AUTOSAVE_PATH, PREV_AUTOSAVE_PATH)
         .map_err(|e| format!("Couldn't keep the previous autosave: {e}"))
 }
@@ -72,20 +72,28 @@ pub struct LoadedSave {
     pub failed: Option<&'static str>,
 }
 
-/// Loads the newest save; when it fails to load, tries the other slot. Callers
+/// Loads the newest save; when it fails to load, tries the other slot. `Ok(None)`
+/// means no save exists yet (callers decide what to toast, if anything). Callers
 /// toast [`LoadedSave::slot`] (and can mention [`LoadedSave::failed`]) so the
 /// player knows which game they got.
-pub fn load_newest_or_fallback() -> Result<LoadedSave, String> {
-    let newest = newest_save().ok_or_else(|| "No save yet: press F5 to save".to_string())?;
+pub fn load_newest_or_fallback() -> Result<Option<LoadedSave>, String> {
+    let Some(newest) = newest_save() else {
+        return Ok(None);
+    };
     match load(newest) {
-        Ok(world) => Ok(LoadedSave { world, slot: newest, failed: None }),
+        Ok(world) => Ok(Some(LoadedSave { world, slot: newest, failed: None })),
         Err(err) => {
             let Some(other) = fallback_save(newest) else {
                 return Err(err);
             };
             match load(other) {
-                Ok(world) => Ok(LoadedSave { world, slot: other, failed: Some(newest) }),
-                Err(other_err) => Err(format!("{err} · {other} also failed: {other_err}")),
+                Ok(world) => Ok(Some(LoadedSave { world, slot: other, failed: Some(newest) })),
+                // If the fallback slot is simply absent, the original error is
+                // the whole story; don't pile an "also failed" note on top.
+                Err(other_err) if fs::metadata(other).is_ok() => {
+                    Err(format!("{err} · {other} also failed: {other_err}"))
+                }
+                Err(_) => Err(err),
             }
         }
     }

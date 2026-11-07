@@ -119,6 +119,31 @@ pub fn right_action(
     }
 }
 
+/// What R should rotate this frame, decided purely from whether a building is
+/// held and whether play is paused / in reach, so it can be unit-tested.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum RotateAction {
+    /// Rotate the building held in hand. Always allowed: this only changes the
+    /// ghost preview, never the world, so pausing or leaving reach is fine.
+    Tool,
+    /// Rotate the placed building under the cursor.
+    World,
+    /// Do nothing (no tool in hand, and paused or out of reach).
+    None,
+}
+
+/// Decides what R rotates: a held building rotates its ghost no matter what, but
+/// a placed building only rotates while playing and within reach.
+pub fn rotate_action(has_tool: bool, paused: bool, in_reach: bool) -> RotateAction {
+    if has_tool {
+        RotateAction::Tool
+    } else if !paused && in_reach {
+        RotateAction::World
+    } else {
+        RotateAction::None
+    }
+}
+
 impl Game {
     pub(crate) fn input(&mut self, dt: f32) {
         let mut walk = Vec2::ZERO;
@@ -178,12 +203,16 @@ impl Game {
         }
         let tile = self.mouse_tile();
         let in_reach = self.world.player.in_reach(tile);
-        if is_key_pressed(KeyCode::R) && !self.paused && in_reach {
+        if is_key_pressed(KeyCode::R) {
+            // Right Shift keeps meaning counter-clockwise for both a held
+            // building and a placed one.
             let ccw = is_key_down(KeyCode::LeftShift) || is_key_down(KeyCode::RightShift);
-            if self.tool.is_some() {
-                self.rot = if ccw { self.rot.ccw() } else { self.rot.cw() };
-            } else {
-                self.world.rotate(tile, !ccw);
+            match rotate_action(self.tool.is_some(), self.paused, in_reach) {
+                RotateAction::Tool => {
+                    self.rot = if ccw { self.rot.ccw() } else { self.rot.cw() };
+                }
+                RotateAction::World => self.world.rotate(tile, !ccw),
+                RotateAction::None => {}
             }
         }
         if is_key_pressed(KeyCode::Q) {
@@ -239,7 +268,7 @@ impl Game {
         }
         if is_key_pressed(KeyCode::F9) {
             match save::load_newest_or_fallback() {
-                Ok(loaded) => {
+                Ok(Some(loaded)) => {
                     self.world = loaded.world;
                     self.cam.pos = self.world.player.pos;
                     self.panel = Panel::None;
@@ -253,6 +282,7 @@ impl Game {
                         None => self.toast("Game loaded"),
                     }
                 }
+                Ok(None) => self.toast("No save yet: press F5 to save"),
                 Err(e) => self.toast(e),
             }
         }
@@ -531,5 +561,22 @@ mod tests {
             right_action(true, false, None, ivec2(3, 4), true, true, false),
             RightAction::Mine(ivec2(3, 4))
         );
+    }
+
+    #[test]
+    fn held_building_rotates_its_ghost_always() {
+        // The held building's ghost rotates even while paused or out of reach.
+        assert_eq!(rotate_action(true, false, true), RotateAction::Tool);
+        assert_eq!(rotate_action(true, true, true), RotateAction::Tool);
+        assert_eq!(rotate_action(true, false, false), RotateAction::Tool);
+        assert_eq!(rotate_action(true, true, false), RotateAction::Tool);
+    }
+
+    #[test]
+    fn placed_building_rotates_only_while_playing_in_reach() {
+        assert_eq!(rotate_action(false, false, true), RotateAction::World);
+        assert_eq!(rotate_action(false, true, true), RotateAction::None, "paused: placed building won't rotate");
+        assert_eq!(rotate_action(false, false, false), RotateAction::None, "out of reach: placed building won't rotate");
+        assert_eq!(rotate_action(false, true, false), RotateAction::None);
     }
 }

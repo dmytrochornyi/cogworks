@@ -79,12 +79,14 @@ async fn main() {
         Some(path) => (save::load(&path).unwrap_or_else(|e| panic!("{e}")), true, Screen::Playing),
         None if screenshot_mode => (World::new(seed), false, Screen::Playing),
         None => match save::load_newest_or_fallback() {
-            Ok(loaded) => {
+            Ok(Some(loaded)) => {
                 if let Some(failed) = loaded.failed {
                     load_note = Some(format!("{failed} failed to load · loaded {} instead", loaded.slot));
                 }
                 (loaded.world, true, Screen::Title(MenuPage::Main))
             }
+            // No save yet: a fresh world with no toast.
+            Ok(None) => (World::new(seed), false, Screen::Title(MenuPage::Main)),
             Err(e) => {
                 load_note = Some(e);
                 (World::new(seed), false, Screen::Title(MenuPage::Main))
@@ -182,21 +184,32 @@ async fn main() {
         if is_quit_requested() {
             // Closing the window: autosave so nothing is lost, then save the
             // settings and exit. The title screen is skipped because the world
-            // was already saved on the way there.
+            // was already saved on the way there. A toast would never be seen
+            // now, so report problems on stderr instead.
             if game.has_game
                 && !matches!(game.screen, Screen::Title(_))
                 && game.world.player.alive()
                 && !screenshot_mode
                 && let Err(e) = save::save(&mut game.world, save::AUTOSAVE_PATH)
             {
-                game.toast(e);
+                eprintln!("{e}");
             }
-            if let Err(e) = game.settings.save() {
-                game.toast(e);
+            if !screenshot_mode
+                && let Err(e) = game.settings.save()
+            {
+                eprintln!("{e}");
             }
             break;
         }
         if game.quit {
+            // Quit (or "Save and quit") from a menu: persist settings too,
+            // but never in screenshot mode, and report on stderr since no
+            // toast would be seen before exit.
+            if !screenshot_mode
+                && let Err(e) = game.settings.save()
+            {
+                eprintln!("{e}");
+            }
             break;
         }
         next_frame().await;
