@@ -219,7 +219,7 @@ fn settings_page(g: &mut Game, top: f32, back: Screen) {
         set_fullscreen(s.fullscreen);
     }
     y += 56.0;
-    text(&a, "M mutes the music at any time", content.x, y, TextSize::S, TEXT_DIM);
+    text(&a, "M turns the music on or off while playing", content.x, y, TextSize::S, TEXT_DIM);
     if s != g.settings {
         g.apply_settings(s);
     }

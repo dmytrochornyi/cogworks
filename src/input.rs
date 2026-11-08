@@ -1,5 +1,6 @@
 use macroquad::prelude::{IVec2, KeyCode, MouseButton, Vec2, is_key_down, is_key_pressed, is_mouse_button_down, is_mouse_button_pressed, ivec2, mouse_wheel};
 
+use crate::audio::music_toggle;
 use crate::game::{Game, Panel};
 use crate::items::Item;
 use crate::save;
@@ -258,8 +259,15 @@ impl Game {
             self.paused = !self.paused;
         }
         if is_key_pressed(KeyCode::M) {
-            self.audio.toggle_music();
-            self.settings.music_muted = !self.audio.music_on();
+            let (muted, music) = music_toggle(self.settings.music_muted, self.settings.music);
+            self.audio.set_muted(muted);
+            self.settings.music_muted = muted;
+            if music != self.settings.music {
+                let mut s = self.settings;
+                s.music = music;
+                self.apply_settings(s);
+            }
+            self.toast(if muted { "Music off" } else { "Music on" });
         }
         if is_key_pressed(KeyCode::P) {
             self.world.peaceful = !self.world.peaceful;

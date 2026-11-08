@@ -134,7 +134,7 @@ impl Game {
             assets,
             renderer: Renderer::new(),
             audio,
-            music_on: !settings.music_muted,
+            music_on: !settings.music_muted && settings.music > 0.0,
             shot_cooldown: 0.0,
             autosave_timer: 0.0,
             autosave: true,

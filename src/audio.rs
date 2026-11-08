@@ -62,6 +62,19 @@ pub fn music_gain(director_gain: f32, levels: &Levels, muted: bool) -> f32 {
     }
 }
 
+/// The pure decision behind the M key. When the music is audible, M mutes it;
+/// when it is silent for any reason — muted, or the music level at 0 — M turns
+/// it back on, restoring a zeroed level to the default. Returns `(muted, music)`.
+pub fn music_toggle(muted: bool, music: f32) -> (bool, f32) {
+    if muted {
+        (false, if music == 0.0 { Levels::default().music } else { music })
+    } else if music == 0.0 {
+        (false, Levels::default().music)
+    } else {
+        (true, music)
+    }
+}
+
 fn mood_index(m: Mood) -> usize {
     match m {
         Mood::Day => 0,
@@ -341,13 +354,19 @@ impl Audio {
         self.levels = levels;
     }
 
+    /// Sets whether music is muted; takes effect on the next update.
+    pub fn set_muted(&mut self, muted: bool) {
+        self.muted = muted;
+    }
+
     pub fn toggle_music(&mut self) -> bool {
         self.muted = !self.muted;
         !self.muted
     }
 
+    /// Whether music is audible right now: not muted and its level above zero.
     pub fn music_on(&self) -> bool {
-        !self.muted
+        !self.muted && self.levels.music > 0.0
     }
 }
 
@@ -428,6 +447,26 @@ mod tests {
         assert_eq!(music_gain(0.0, &levels, false), 0.0);
         assert_eq!(music_gain(0.5, &levels, false), 0.5 * 0.55);
         assert_eq!(music_gain(1.0, &levels, false), 0.55);
+    }
+
+    #[test]
+    fn music_toggle_mutes_audible_music() {
+        // Audible music: M mutes it, leaving the volume untouched.
+        assert_eq!(music_toggle(false, 0.55), (true, 0.55));
+        assert_eq!(music_toggle(false, 0.3), (true, 0.3));
+    }
+
+    #[test]
+    fn music_toggle_unmutes_keeping_volume() {
+        // Muted with a non-zero level: M unmutes, leaving the volume untouched.
+        assert_eq!(music_toggle(true, 0.55), (false, 0.55));
+    }
+
+    #[test]
+    fn music_toggle_restores_zeroed_volume() {
+        // Silent only because the level is 0 (muted or not): M unmutes at the default.
+        assert_eq!(music_toggle(false, 0.0), (false, Levels::default().music));
+        assert_eq!(music_toggle(true, 0.0), (false, Levels::default().music));
     }
 
     #[test]
