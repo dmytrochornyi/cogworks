@@ -814,21 +814,135 @@ fn near(w: &World, rng: &mut Rng, span: i32) -> IVec2 {
         )
 }
 
+/// Clears trees and ore from a small rectangle so the deterministic combat
+/// pocket can be built on clean ground regardless of the seed.
+fn clear_patch(w: &mut World, lo: IVec2, hi: IVec2) {
+    for y in lo.y..=hi.y {
+        for x in lo.x..=hi.x {
+            let p = ivec2(x, y);
+            if !in_bounds(p) {
+                continue;
+            }
+            w.res[idx(p)] = None;
+            if !w.trees.is_empty() {
+                w.trees[idx(p)] = 0;
+            }
+        }
+    }
+}
+
+/// Whether any building has taken damage (its hp is below its max).
+fn any_building_damaged(w: &World) -> bool {
+    w.entities.iter().flatten().any(|e| e.hp < e.kind.max_hp())
+}
+
+/// Total clips a sentry still holds.
+fn sentry_ammo(w: &World, sentry: usize) -> u32 {
+    match &w.entity(sentry).state {
+        State::Sentry { ammo, .. } => ammo.total(),
+        _ => 0,
+    }
+}
+
+/// Whether `sentry` has consumed any of the ammo it started with.
+fn sentry_fired(w: &World, sentry: usize, initial_ammo: u32) -> bool {
+    w.entities.get(sentry).and_then(|s| s.as_ref()).is_some_and(|e| match &e.state {
+        State::Sentry { ammo, .. } => ammo.total() < initial_ammo,
+        _ => false,
+    })
+}
+
+/// Builds a deterministic combat pocket a little east of the landing site, far
+/// enough from the player that enemies chew buildings instead of chasing the
+/// robot. Returns the sentry's entity id.
+fn provoke_combat(w: &mut World) -> usize {
+    let o = w.spawn.as_ivec2();
+    let (wall_at, sentry_at, hive_at) = (o + ivec2(20, 0), o + ivec2(20, 6), o + ivec2(20, 12));
+    clear_patch(w, o + ivec2(18, -2), o + ivec2(24, 16));
+    let wall = build(w, Kind::Wall, wall_at, Dir::N);
+    let sentry = build(w, Kind::Sentry, sentry_at, Dir::N);
+    if let State::Sentry { ammo, .. } = &mut w.entity_mut(sentry).state {
+        ammo.add(Item::SlugClip, 4);
+    }
+    let hive = w.spawn_entity(Kind::Hive, hive_at, Dir::N);
+    // Agitate the hive: raise evolution (bigger, brutier waves) and dump
+    // pollution into its chunk so `update_hive` absorbs it and sends a wave.
+    w.evolution = 0.6;
+    w.pollute(w.entity(hive).center(), 300.0);
+    // A brute to tear the wall down, and mites for the sentry to pick off.
+    let wall_center = w.entity(wall).center();
+    let hive_center = w.entity(hive).center();
+    w.enemies.push(Enemy {
+        pos: wall_center + vec2(-1.5, 0.0),
+        hp: 150.0,
+        brute: true,
+        target: wall_center,
+        home: hive_center,
+        cooldown: 0.0,
+        patience: 300.0,
+        phase: 0.0,
+    });
+    for k in 0..3 {
+        w.enemies.push(Enemy {
+            pos: wall_center + vec2(2.5, 1.0 + k as f32),
+            hp: 30.0,
+            brute: false,
+            target: wall_center,
+            home: hive_center,
+            cooldown: 0.0,
+            patience: 300.0,
+            phase: k as f32,
+        });
+    }
+    sentry
+}
+
 #[test]
 fn soak_random_actions_never_break_invariants() {
     // Kept below the plan's ~3000 to fit the whole suite in the ~20s debug budget
     // once the invariant check scans the full grid after every step.
     const STEPS: usize = 2500;
     let placeable = placeable();
-    for seed in [3u64, 11, 0xDEAD_BEEF_CAFE] {
+    for (i, seed) in [3u64, 11, 0xDEAD_BEEF_CAFE].into_iter().enumerate() {
         let mut w = World::new(seed);
         // Plenty of every item, so placement succeeds far more often than not.
         for item in Item::ALL {
             w.player.inv.add(*item, 10_000);
         }
-        // Hives and enemies stay on: `World::new` leaves `peaceful` off, so the
-        // combat and pollution paths run under the same random hammering.
         let mut rng = Rng(seed ^ 0x9E37_79B9_7F4A_7C15);
+
+        // A deterministic combat pocket, then enough ticks for the hive to send
+        // a wave, the brute to bite the wall and the sentry to fire. The last
+        // seed also gets a long, uninterrupted stretch of simulated time.
+        let sentry = provoke_combat(&mut w);
+        let sentry_ammo = sentry_ammo(&w, sentry);
+        let combat_ticks = if i == 2 { 6000 } else { 600 };
+        let mut saw_enemy = false;
+        let mut saw_damage = false;
+        let mut saw_sentry = false;
+        for batch in 0..combat_ticks / 60 {
+            for _ in 0..60 {
+                w.update(TICK);
+            }
+            saw_enemy |= !w.enemies.is_empty();
+            saw_damage |= any_building_damaged(&w);
+            saw_sentry |= sentry_fired(&w, sentry, sentry_ammo);
+            if batch % 10 == 0 {
+                w.check_invariants()
+                    .unwrap_or_else(|e| panic!("seed {seed} combat batch {batch}: {e}"));
+            }
+        }
+        w.check_invariants()
+            .unwrap_or_else(|e| panic!("seed {seed} combat end: {e}"));
+        assert!(
+            saw_enemy && saw_damage && saw_sentry,
+            "seed {seed}: combat never materialized (enemy={saw_enemy}, damage={saw_damage}, sentry={saw_sentry})"
+        );
+
+        // Random hammering. Place/deconstruct/rotate are checked every step, but
+        // the full-grid scan after every tick batch dominates the run time, so
+        // tick batches are only checked every 10th one (and always at the end).
+        let mut tick_batch = 0usize;
         for step in 0..STEPS {
             match rng.next() % 4 {
                 0 => {
@@ -836,19 +950,30 @@ fn soak_random_actions_never_break_invariants() {
                     let dir = Dir::ALL[(rng.next() as usize) % Dir::ALL.len()];
                     let pos = near(&w, &mut rng, 13);
                     let _ = w.place(kind, pos, dir); // errors (space, ore, reach) are fine
+                    w.check_invariants()
+                        .unwrap_or_else(|e| panic!("seed {seed} step {step}: {e}"));
                 }
                 1 => {
                     let _ = w.deconstruct(near(&w, &mut rng, 25));
+                    w.check_invariants()
+                        .unwrap_or_else(|e| panic!("seed {seed} step {step}: {e}"));
                 }
-                2 => w.rotate(near(&w, &mut rng, 25), rng.next().is_multiple_of(2)),
+                2 => {
+                    w.rotate(near(&w, &mut rng, 25), rng.next().is_multiple_of(2));
+                    w.check_invariants()
+                        .unwrap_or_else(|e| panic!("seed {seed} step {step}: {e}"));
+                }
                 _ => {
                     for _ in 0..1 + (rng.next() % 30) as usize {
                         w.update(TICK);
                     }
+                    if tick_batch.is_multiple_of(10) {
+                        w.check_invariants()
+                            .unwrap_or_else(|e| panic!("seed {seed} step {step}: {e}"));
+                    }
+                    tick_batch += 1;
                 }
             }
-            w.check_invariants()
-                .unwrap_or_else(|e| panic!("seed {seed} step {step}: {e}"));
 
             if step % 500 == 499 {
                 let json = serde_json::to_string(&w).unwrap();
@@ -858,6 +983,8 @@ fn soak_random_actions_never_break_invariants() {
                     .unwrap_or_else(|e| panic!("seed {seed} step {step} reload: {e}"));
             }
         }
+        w.check_invariants()
+            .unwrap_or_else(|e| panic!("seed {seed} end: {e}"));
     }
 }
 
