@@ -30,6 +30,9 @@ use world::{Kind, State, World};
 
 const TICK: f32 = 1.0 / 60.0;
 
+/// Where the panic hook appends crash reports.
+const CRASH_LOG: &str = "cogworks_crash.log";
+
 fn conf() -> Conf {
     let dim = |key: &str, default: i32| {
         std::env::var(key).ok().and_then(|v| v.parse().ok()).unwrap_or(default)
@@ -96,6 +99,11 @@ async fn main() {
         .map(|d| d.as_nanos() as u64)
         .unwrap_or(0x9E37_79B9);
     let screenshot_mode = std::env::var("COGWORKS_SCREENSHOT").is_ok();
+    // Log panics to a crash file so a crash doesn't die without a trace. Skipped
+    // in screenshot mode, where a crash is just a failed dev run.
+    if !screenshot_mode {
+        install_crash_hook();
+    }
     // `cogworks <save file>` drops straight into that save. Otherwise the title
     // screen opens over the newest save (so Continue resumes it), or over a
     // fresh world when there is none yet.
@@ -191,7 +199,11 @@ async fn main() {
         if game.screen == Screen::Playing && !game.paused {
             acc += dt;
             while acc >= TICK {
-                game.world.update(TICK);
+                if screenshot_mode {
+                    game.world.update(TICK);
+                } else {
+                    tick_or_crash_save(&mut game.world);
+                }
                 acc -= TICK;
             }
         }
@@ -241,5 +253,47 @@ async fn main() {
             break;
         }
         next_frame().await;
+    }
+}
+
+/// Installs a panic hook that appends a crash report to `cogworks_crash.log`
+/// before falling back to the default handler. The hook itself must never
+/// panic: any write failure is ignored.
+fn install_crash_hook() {
+    let previous = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        let _ = record_crash(info);
+        previous(info);
+    }));
+}
+
+/// Appends a timestamp, the panic message, its location and a backtrace to the
+/// crash log. Returns `Err` (ignored by the hook) if the log can't be written.
+fn record_crash(info: &std::panic::PanicHookInfo<'_>) -> std::io::Result<()> {
+    use std::io::Write;
+    let mut log = std::fs::OpenOptions::new().create(true).append(true).open(CRASH_LOG)?;
+    let secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let location = info
+        .location()
+        .map(|l| l.to_string())
+        .unwrap_or_else(|| "unknown location".to_string());
+    writeln!(log, "{secs} {location}: {info}")?;
+    writeln!(log, "{}", std::backtrace::Backtrace::force_capture())?;
+    Ok(())
+}
+
+/// Runs one fixed tick; if it panics, writes an emergency save to the crash slot
+/// (never one of the normal slots, so a broken state can't overwrite a good
+/// save) and re-raises the panic so the crash log and default hook still run.
+fn tick_or_crash_save(world: &mut World) {
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| world.update(TICK))) {
+        Ok(()) => {}
+        Err(payload) => {
+            let _ = save::save(world, save::CRASH_SAVE_PATH);
+            std::panic::resume_unwind(payload);
+        }
     }
 }

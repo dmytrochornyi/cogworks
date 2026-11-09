@@ -153,12 +153,14 @@ impl World {
             }
         }
         let player = &mut self.player;
-        if !player.hp.is_finite() {
+        if !player.hp.is_finite() || player.hp > PLAYER_HP {
             player.hp = PLAYER_HP;
             fixed += 1;
-        } else if player.hp < 0.0 || player.hp > PLAYER_HP {
-            player.hp = player.hp.clamp(0.0, PLAYER_HP);
-            fixed += 1;
+        } else if player.hp < 0.0 {
+            // A player saved while dead legitimately has negative hp; clamp it
+            // without counting it as a repair so loading such a save doesn't
+            // toast "Save repaired".
+            player.hp = 0.0;
         }
         for value in [&mut player.calm, &mut player.respawn, &mut player.stride] {
             if !value.is_finite() {

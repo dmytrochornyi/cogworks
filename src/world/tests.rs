@@ -756,6 +756,15 @@ fn non_finite_numbers_are_repaired() {
 }
 
 #[test]
+fn a_dead_player_with_negative_hp_is_not_a_repair() {
+    let mut w = World::new(19);
+    w.player.hp = -7.5;
+    let notes = w.repair().unwrap();
+    assert!(notes.is_empty(), "negative but finite player hp is a valid dead state: {notes:?}");
+    assert_eq!(w.player.hp, 0.0);
+}
+
+#[test]
 fn wrong_structure_lengths_are_fatal() {
     let mut w = World::new(29);
     w.res.pop();

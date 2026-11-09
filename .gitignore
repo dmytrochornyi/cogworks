@@ -9,3 +9,5 @@ cogworks_autosave.prev.json
 __pycache__/
 cogworks_test_save.json
 cogworks_settings.json
+cogworks_crash.log
+cogworks_crash_save.json

@@ -10,20 +10,32 @@ pub const SAVE_PATH: &str = "cogworks_save.json";
 pub const AUTOSAVE_PATH: &str = "cogworks_autosave.json";
 /// The previous autosave, kept aside when a new game would overwrite it.
 pub const PREV_AUTOSAVE_PATH: &str = "cogworks_autosave.prev.json";
+/// Where the emergency save lands when the simulation panics. Deliberately not
+/// one of the normal slots, so a possibly broken state can't overwrite a good save.
+pub const CRASH_SAVE_PATH: &str = "cogworks_crash_save.json";
 pub const AUTOSAVE_EVERY: f32 = 180.0;
 
 /// Writes to a temporary file first and renames it into place, so a crash or a
 /// full disk mid-write can never leave a half-written save behind.
 pub fn save(world: &mut World, path: &str) -> Result<(), String> {
     world.sync_pipes();
+    let bytes = serde_json::to_vec(world).map_err(|e| format!("Save failed: {e}"))?;
+    write_atomic(path, &bytes).map_err(|e| format!("Save failed: {e}"))
+}
+
+/// Writes `bytes` to `path` atomically: the bytes go to a `path.tmp`, which is
+/// flushed and synced to disk before being renamed over `path`. A crash or a
+/// full disk mid-write can never leave a half-written file behind, and no
+/// `.tmp` is left on success.
+pub fn write_atomic(path: &str, bytes: &[u8]) -> Result<(), String> {
     let tmp = format!("{path}.tmp");
-    let fail = |e: &dyn std::fmt::Display| format!("Save failed: {e}");
-    let file = File::create(&tmp).map_err(|e| fail(&e))?;
+    let file = File::create(&tmp).map_err(|e| e.to_string())?;
     let mut out = BufWriter::new(file);
-    serde_json::to_writer(&mut out, world).map_err(|e| fail(&e))?;
-    out.flush().map_err(|e| fail(&e))?;
+    out.write_all(bytes).map_err(|e| e.to_string())?;
+    out.flush().map_err(|e| e.to_string())?;
+    out.get_ref().sync_all().map_err(|e| e.to_string())?;
     drop(out);
-    fs::rename(&tmp, path).map_err(|e| fail(&e))
+    fs::rename(&tmp, path).map_err(|e| e.to_string())
 }
 
 /// The most recently written of the manual save and the autosave, if any exist.
@@ -168,5 +180,32 @@ mod tests {
         let mut timer = 0.0;
         let fired = (0..(AUTOSAVE_EVERY as usize * 10 * 3)).filter(|_| autosave_tick(&mut timer, 0.1)).count();
         assert_eq!(fired, 3);
+    }
+
+    #[test]
+    fn write_atomic_writes_replaces_and_leaves_no_tmp() {
+        let dir = temp_dir("write_atomic");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("save.json");
+        let path = path.to_str().unwrap();
+
+        write_atomic(path, b"first").unwrap();
+        assert_eq!(std::fs::read(path).unwrap(), b"first");
+        assert!(!std::path::Path::new(&format!("{path}.tmp")).exists());
+
+        // A second write replaces the file in place, still leaving no temp file.
+        write_atomic(path, b"second, longer").unwrap();
+        assert_eq!(std::fs::read(path).unwrap(), b"second, longer");
+        assert!(!std::path::Path::new(&format!("{path}.tmp")).exists());
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    fn temp_dir(name: &str) -> std::path::PathBuf {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        std::env::temp_dir().join(format!("cogworks_{name}_{}_{nanos}", std::process::id()))
     }
 }

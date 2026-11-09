@@ -86,6 +86,12 @@ nothing is lost, and starting a new game keeps the previous autosave aside as
 `cogworks_autosave.prev.json`. Settings are kept in `cogworks_settings.json`.
 To skip the title screen, run `cogworks <save file>`.
 
+If the game crashes, it appends the panic message, its location and a backtrace
+to `cogworks_crash.log`, and saves the world to `cogworks_crash_save.json` so a
+broken state can't overwrite your good saves. Run
+`cogworks cogworks_crash_save.json` to load that emergency save; the same
+validation and repair that protects normal saves applies to it.
+
 ## Controls
 
 | Key | Action |
