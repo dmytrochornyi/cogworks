@@ -7,6 +7,7 @@ mod logistics;
 mod player;
 mod power;
 mod production;
+mod repair;
 #[cfg(test)]
 mod tests;
 mod trees;

@@ -621,3 +621,167 @@ fn walking_velocity_includes_both_axes() {
     assert!(v.x < 0.0 && v.y.abs() < 1e-6, "sideways velocity, got {v}");
     assert!((v.length() - super::player::PLAYER_SPEED).abs() < 1e-2, "full walking speed, got {}", v.length());
 }
+
+// --- Phase 1: save validation and repair ---
+
+#[test]
+fn fresh_world_loads_back_with_no_repair_notes() {
+    let w = World::new(11);
+    let json = serde_json::to_string(&w).unwrap();
+    let (back, notes) = crate::save::load_from_str(&json).unwrap();
+    assert!(notes.is_empty(), "repair should find nothing to fix: {notes:?}");
+    assert_eq!(back.res, w.res);
+    assert_eq!(back.entities.len(), w.entities.len());
+    assert_eq!(back.research.done, w.research.done);
+    assert_eq!(back.player.inv, w.player.inv);
+}
+
+#[test]
+fn short_research_done_is_padded_and_every_tech_is_queryable() {
+    let mut w = World::new(13);
+    w.research.done.pop(); // a save made before the newest tech existed
+    assert_eq!(w.research.done.len(), TECHS.len() - 1);
+    let json = serde_json::to_string(&w).unwrap();
+    let (back, notes) = crate::save::load_from_str(&json).unwrap();
+    assert_eq!(back.research.done.len(), TECHS.len());
+    assert!(!notes.is_empty());
+    assert!(!back.research.done[TECHS.len() - 1], "the padded tech starts undone");
+    for k in 0..TECHS.len() {
+        let _ = back.tech_available(k); // must not panic for any tech
+    }
+}
+
+#[test]
+fn out_of_range_research_current_is_cleared() {
+    let mut w = World::new(17);
+    w.research.current = Some(TECHS.len());
+    let json = serde_json::to_string(&w).unwrap();
+    let (back, notes) = crate::save::load_from_str(&json).unwrap();
+    assert_eq!(back.research.current, None);
+    assert!(!notes.is_empty());
+}
+
+#[test]
+fn dangling_and_missing_grid_entries_are_rebuilt() {
+    let mut w = blank();
+    let wall = build(&mut w, Kind::Wall, ivec2(10, 10), Dir::N);
+    // Free a slot so a grid cell can point at a `None` entity.
+    w.delete(wall);
+    // A second wall whose tile is missing from the grid.
+    let wall2 = build(&mut w, Kind::Wall, ivec2(12, 10), Dir::N);
+    w.grid[idx(ivec2(12, 10))] = None;
+    // A cell pointing at the freed (None) slot.
+    w.grid[idx(ivec2(30, 30))] = Some(wall);
+
+    let json = serde_json::to_string(&w).unwrap();
+    let (back, _) = crate::save::load_from_str(&json).unwrap();
+
+    assert_eq!(back.entity_at(ivec2(12, 10)), Some(wall2));
+    assert_eq!(back.entity_at(ivec2(30, 30)), None);
+
+    // Every grid cell points at an entity covering it, and every entity's tiles
+    // point back at it.
+    for tile in 0..(MAP_W * MAP_H) as usize {
+        let p = ivec2(tile as i32 % MAP_W, tile as i32 / MAP_W);
+        if let Some(id) = back.grid[tile] {
+            assert!(back.entity(id).tiles().any(|t| t == p), "grid[{tile}] -> {id} doesn't cover {p}");
+        }
+    }
+    for (id, slot) in back.entities.iter().enumerate() {
+        let Some(e) = slot else { continue };
+        for t in e.tiles() {
+            assert_eq!(back.grid[idx(t)], Some(id), "entity {id} tile {t} doesn't point back");
+        }
+    }
+}
+
+#[test]
+fn overlapping_entities_drop_all_but_one() {
+    let mut w = blank();
+    let wall = build(&mut w, Kind::Wall, ivec2(10, 10), Dir::N);
+    // A second building stacked exactly on top of the first.
+    let clone = w.entity(wall).clone();
+    w.entities.push(Some(clone));
+
+    let json = serde_json::to_string(&w).unwrap();
+    let (back, notes) = crate::save::load_from_str(&json).unwrap();
+    assert_eq!(back.entities.iter().flatten().count(), 1);
+    assert_eq!(back.entity_at(ivec2(10, 10)), Some(wall));
+    assert!(notes.iter().any(|n| n.contains("Removed 1")), "notes: {notes:?}");
+}
+
+#[test]
+fn non_finite_numbers_are_repaired() {
+    let mut w = blank();
+    let wall = build(&mut w, Kind::Wall, ivec2(10, 10), Dir::N);
+    w.player.pos = vec2(f32::NAN, f32::INFINITY);
+    w.player.hp = f32::NAN;
+    w.time = f32::INFINITY;
+    w.evolution = f32::NAN;
+    w.pollution[0] = f32::NAN;
+    w.entity_mut(wall).hp = f32::INFINITY;
+    w.entity_mut(wall).calm = f32::NEG_INFINITY;
+    w.enemies.push(Enemy {
+        pos: vec2(f32::NAN, 1.0),
+        hp: 30.0,
+        brute: false,
+        target: vec2(0.0, 0.0),
+        home: vec2(0.0, 0.0),
+        cooldown: 0.0,
+        patience: 60.0,
+        phase: 0.0,
+    });
+    w.enemies.push(Enemy {
+        pos: vec2(5.0, 5.0),
+        hp: 30.0,
+        brute: false,
+        target: vec2(0.0, 0.0),
+        home: vec2(0.0, 0.0),
+        cooldown: 0.0,
+        patience: 60.0,
+        phase: 0.0,
+    });
+
+    let notes = w.repair().unwrap();
+    assert!(w.player.pos.is_finite(), "player moved to a finite spawn");
+    assert!(w.player.hp.is_finite());
+    assert!(w.time.is_finite());
+    assert!(w.evolution.is_finite());
+    assert!(w.pollution.iter().all(|c| c.is_finite()));
+    assert!(w.entities.iter().flatten().all(|e| e.hp.is_finite() && e.calm.is_finite()));
+    assert_eq!(w.enemies.len(), 1, "the NaN enemy is dropped, the healthy one stays");
+    assert!(w.enemies.iter().all(|e| e.pos.is_finite() && e.hp.is_finite()));
+    assert!(notes.iter().any(|n| n.contains("invalid number")), "notes: {notes:?}");
+    assert!(notes.iter().any(|n| n.contains("enemy")), "notes: {notes:?}");
+}
+
+#[test]
+fn wrong_structure_lengths_are_fatal() {
+    let mut w = World::new(29);
+    w.res.pop();
+    assert!(crate::save::load_from_str(&serde_json::to_string(&w).unwrap()).is_err());
+
+    let mut w = World::new(29);
+    w.grid.pop();
+    assert!(crate::save::load_from_str(&serde_json::to_string(&w).unwrap()).is_err());
+
+    let mut w = World::new(29);
+    w.pollution.pop();
+    assert!(crate::save::load_from_str(&serde_json::to_string(&w).unwrap()).is_err());
+
+    let mut w = World::new(29);
+    w.trees.pop(); // non-empty, wrong length
+    assert!(crate::save::load_from_str(&serde_json::to_string(&w).unwrap()).is_err());
+}
+
+#[test]
+fn truncated_and_garbage_json_are_errors_not_panics() {
+    let full = serde_json::to_string(&World::new(23)).unwrap();
+    for end in [0, 1, 5, full.len() / 2, full.len() - 1] {
+        let truncated = &full[..end];
+        assert!(crate::save::load_from_str(truncated).is_err(), "truncated at {end}");
+    }
+    for garbage in ["", "not json", "{\"res\": ", "42", "null", "[1, 2, 3]"] {
+        assert!(crate::save::load_from_str(garbage).is_err(), "garbage: {garbage:?}");
+    }
+}

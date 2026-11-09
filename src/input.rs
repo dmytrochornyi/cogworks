@@ -292,6 +292,9 @@ impl Game {
                         Some(failed) => self.toast(format!("{failed} failed to load · loaded {} instead", loaded.slot)),
                         None => self.toast("Game loaded"),
                     }
+                    if let Some(note) = save::repair_toast(&loaded.notes) {
+                        self.toast(note);
+                    }
                 }
                 Ok(None) => self.toast("No save yet: press F5 to save"),
                 Err(e) => self.toast(e),

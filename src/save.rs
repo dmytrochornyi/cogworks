@@ -1,5 +1,5 @@
 use std::fs::{self, File};
-use std::io::{BufReader, BufWriter, Write};
+use std::io::{BufWriter, Write};
 use std::time::SystemTime;
 
 use crate::world::World;
@@ -70,6 +70,8 @@ pub struct LoadedSave {
     pub slot: &'static str,
     /// The newest slot, when it failed to load and `slot` is the fallback.
     pub failed: Option<&'static str>,
+    /// Problems [`World::repair`] fixed on load, if any.
+    pub notes: Vec<String>,
 }
 
 /// Loads the newest save; when it fails to load, tries the other slot. `Ok(None)`
@@ -81,13 +83,15 @@ pub fn load_newest_or_fallback() -> Result<Option<LoadedSave>, String> {
         return Ok(None);
     };
     match load(newest) {
-        Ok(world) => Ok(Some(LoadedSave { world, slot: newest, failed: None })),
+        Ok((world, notes)) => Ok(Some(LoadedSave { world, notes, slot: newest, failed: None })),
         Err(err) => {
             let Some(other) = fallback_save(newest) else {
                 return Err(err);
             };
             match load(other) {
-                Ok(world) => Ok(Some(LoadedSave { world, slot: other, failed: Some(newest) })),
+                Ok((world, notes)) => {
+                    Ok(Some(LoadedSave { world, notes, slot: other, failed: Some(newest) }))
+                }
                 // If the fallback slot is simply absent, the original error is
                 // the whole story; don't pile an "also failed" note on top.
                 Err(other_err) if fs::metadata(other).is_ok() => {
@@ -110,12 +114,29 @@ pub fn autosave_tick(timer: &mut f32, dt: f32) -> bool {
     }
 }
 
-pub fn load(path: &str) -> Result<World, String> {
-    let file = File::open(path).map_err(|e| format!("Load failed: {e}"))?;
-    let mut world: World =
-        serde_json::from_reader(BufReader::new(file)).map_err(|e| format!("Load failed: {e}"))?;
+pub fn load(path: &str) -> Result<(World, Vec<String>), String> {
+    let json = fs::read_to_string(path).map_err(|e| format!("Load failed: {e}"))?;
+    load_from_str(&json)
+}
+
+/// Deserializes, validates and repairs a save from `json`. Used by [`load`] and
+/// by tests that don't want to touch the filesystem.
+pub fn load_from_str(json: &str) -> Result<(World, Vec<String>), String> {
+    let mut world: World = serde_json::from_str(json).map_err(|e| format!("Load failed: {e}"))?;
+    let notes = world.repair().map_err(|e| format!("Load failed: {e}"))?;
     world.after_load();
-    Ok(world)
+    Ok((world, notes))
+}
+
+/// A one-line summary of what [`World::repair`] fixed, for a startup or F9
+/// toast, or `None` when nothing was repaired.
+pub fn repair_toast(notes: &[String]) -> Option<String> {
+    let first = notes.first()?;
+    let mut msg = format!("Save repaired: {first}");
+    if notes.len() > 1 {
+        msg.push_str(&format!(" and {} more", notes.len() - 1));
+    }
+    Some(msg)
 }
 
 #[cfg(test)]

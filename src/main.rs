@@ -61,6 +61,31 @@ fn window_icon() -> macroquad::miniquad::conf::Icon {
     }
 }
 
+/// The normal startup path: the newest save under the title screen, or a fresh
+/// world when there is none yet. A failure to load becomes a toast rather than a
+/// panic, and any repairs the load made are reported too.
+fn startup_world(
+    seed: u64,
+    load_note: &mut Option<String>,
+    repair_note: &mut Option<String>,
+) -> (World, bool, Screen) {
+    match save::load_newest_or_fallback() {
+        Ok(Some(loaded)) => {
+            if let Some(failed) = loaded.failed {
+                *load_note = Some(format!("{failed} failed to load · loaded {} instead", loaded.slot));
+            }
+            *repair_note = save::repair_toast(&loaded.notes);
+            (loaded.world, true, Screen::Title(MenuPage::Main))
+        }
+        // No save yet: a fresh world with no toast.
+        Ok(None) => (World::new(seed), false, Screen::Title(MenuPage::Main)),
+        Err(e) => {
+            *load_note = Some(e);
+            (World::new(seed), false, Screen::Title(MenuPage::Main))
+        }
+    }
+}
+
 #[macroquad::main(conf)]
 async fn main() {
     // Closing the window shouldn't silently lose up to 3 minutes of play: keep
@@ -75,23 +100,22 @@ async fn main() {
     // screen opens over the newest save (so Continue resumes it), or over a
     // fresh world when there is none yet.
     let mut load_note = None;
+    let mut repair_note = None;
     let (world, has_game, screen) = match std::env::args().nth(1) {
-        Some(path) => (save::load(&path).unwrap_or_else(|e| panic!("{e}")), true, Screen::Playing),
-        None if screenshot_mode => (World::new(seed), false, Screen::Playing),
-        None => match save::load_newest_or_fallback() {
-            Ok(Some(loaded)) => {
-                if let Some(failed) = loaded.failed {
-                    load_note = Some(format!("{failed} failed to load · loaded {} instead", loaded.slot));
-                }
-                (loaded.world, true, Screen::Title(MenuPage::Main))
+        Some(path) => match save::load(&path) {
+            Ok((world, notes)) => {
+                repair_note = save::repair_toast(&notes);
+                (world, true, Screen::Playing)
             }
-            // No save yet: a fresh world with no toast.
-            Ok(None) => (World::new(seed), false, Screen::Title(MenuPage::Main)),
+            // A save named on the command line that won't load falls back to the
+            // normal startup path instead of panicking.
             Err(e) => {
                 load_note = Some(e);
-                (World::new(seed), false, Screen::Title(MenuPage::Main))
+                startup_world(seed, &mut load_note, &mut repair_note)
             }
         },
+        None if screenshot_mode => (World::new(seed), false, Screen::Playing),
+        None => startup_world(seed, &mut load_note, &mut repair_note),
     };
     let assets = Rc::new(Assets::load().await);
     let audio = audio::Audio::load().await;
@@ -101,6 +125,9 @@ async fn main() {
     // A loaded game doesn't need the welcome note again.
     game.show_help = !has_game;
     if let Some(e) = load_note {
+        game.toast(e);
+    }
+    if let Some(e) = repair_note {
         game.toast(e);
     }
     // Dev aid: open a menu in screenshot mode.
