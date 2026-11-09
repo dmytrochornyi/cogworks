@@ -794,3 +794,100 @@ fn truncated_and_garbage_json_are_errors_not_panics() {
         assert!(crate::save::load_from_str(garbage).is_err(), "garbage: {garbage:?}");
     }
 }
+
+// --- Phase 3: soak and save-corruption tests ---
+
+const TICK: f32 = 1.0 / 60.0;
+
+/// Every kind the player can place (everything but the Hive).
+fn placeable() -> Vec<Kind> {
+    Kind::ALL.iter().copied().filter(|k| k.item().is_some()).collect()
+}
+
+/// A random tile within `span` tiles of the player, in each axis.
+fn near(w: &World, rng: &mut Rng, span: i32) -> IVec2 {
+    let center = w.player.pos.floor().as_ivec2();
+    center
+        + ivec2(
+            (rng.next() % span as u64) as i32 - span / 2,
+            (rng.next() % span as u64) as i32 - span / 2,
+        )
+}
+
+#[test]
+fn soak_random_actions_never_break_invariants() {
+    // Kept below the plan's ~3000 to fit the whole suite in the ~20s debug budget
+    // once the invariant check scans the full grid after every step.
+    const STEPS: usize = 2500;
+    let placeable = placeable();
+    for seed in [3u64, 11, 0xDEAD_BEEF_CAFE] {
+        let mut w = World::new(seed);
+        // Plenty of every item, so placement succeeds far more often than not.
+        for item in Item::ALL {
+            w.player.inv.add(*item, 10_000);
+        }
+        // Hives and enemies stay on: `World::new` leaves `peaceful` off, so the
+        // combat and pollution paths run under the same random hammering.
+        let mut rng = Rng(seed ^ 0x9E37_79B9_7F4A_7C15);
+        for step in 0..STEPS {
+            match rng.next() % 4 {
+                0 => {
+                    let kind = placeable[(rng.next() as usize) % placeable.len()];
+                    let dir = Dir::ALL[(rng.next() as usize) % Dir::ALL.len()];
+                    let pos = near(&w, &mut rng, 13);
+                    let _ = w.place(kind, pos, dir); // errors (space, ore, reach) are fine
+                }
+                1 => {
+                    let _ = w.deconstruct(near(&w, &mut rng, 25));
+                }
+                2 => w.rotate(near(&w, &mut rng, 25), rng.next().is_multiple_of(2)),
+                _ => {
+                    for _ in 0..1 + (rng.next() % 30) as usize {
+                        w.update(TICK);
+                    }
+                }
+            }
+            w.check_invariants()
+                .unwrap_or_else(|e| panic!("seed {seed} step {step}: {e}"));
+
+            if step % 500 == 499 {
+                let json = serde_json::to_string(&w).unwrap();
+                let (back, notes) = crate::save::load_from_str(&json).unwrap();
+                assert!(notes.is_empty(), "seed {seed} step {step}: repaired on load: {notes:?}");
+                back.check_invariants()
+                    .unwrap_or_else(|e| panic!("seed {seed} step {step} reload: {e}"));
+            }
+        }
+    }
+}
+
+#[test]
+fn corrupted_saves_load_or_error_without_panicking() {
+    let mut w = World::new(0xB0B);
+    for item in Item::ALL {
+        w.player.inv.add(*item, 1_000);
+    }
+    // A few hundred ticks so there's real state to corrupt.
+    for _ in 0..600 {
+        w.update(TICK);
+    }
+    let full = serde_json::to_string(&w).unwrap();
+    let bytes = full.as_bytes();
+
+    let mut rng = Rng(0x1234_5678_9ABC_DEF0 | 1);
+    for attempt in 0..200 {
+        let mut s = bytes.to_vec();
+        if rng.next().is_multiple_of(2) {
+            let at = (rng.next() as usize) % s.len();
+            s.truncate(at);
+        } else {
+            let at = (rng.next() as usize) % s.len();
+            s[at] = b' ' + (rng.next() % 95) as u8; // a printable ASCII byte
+        }
+        let text = String::from_utf8_lossy(&s);
+        if let Ok((back, _notes)) = crate::save::load_from_str(&text) {
+            back.check_invariants()
+                .unwrap_or_else(|e| panic!("attempt {attempt}: corrupt-but-loadable save broke invariants: {e}"));
+        }
+    }
+}

@@ -175,3 +175,140 @@ impl World {
 fn plural(n: usize) -> &'static str {
     if n == 1 { "" } else { "s" }
 }
+
+#[cfg(test)]
+impl World {
+    /// Structural self-check shared with [`World::repair`]: the tile grid and the
+    /// entity list agree in both directions, `free` holds exactly the empty
+    /// slots, every simulation float is finite, and research progress has one
+    /// entry per tech. The soak and corruption tests call this after every
+    /// action so a NaN or a desynced grid surfaces here, at its source, instead
+    /// of as a panic deep inside a later tick.
+    pub fn check_invariants(&self) -> Result<(), String> {
+        // Grid -> entities: every marked tile points at a live entity covering it.
+        for (i, &cell) in self.grid.iter().enumerate() {
+            let Some(id) = cell else { continue };
+            let p = ivec2(i as i32 % MAP_W, i as i32 / MAP_W);
+            let Some(e) = self.entities.get(id).and_then(|s| s.as_ref()) else {
+                return Err(format!("grid[{i}] points at missing entity {id}"));
+            };
+            if !e.tiles().any(|t| t == p) {
+                return Err(format!("grid[{i}] -> {id} doesn't cover tile {p}"));
+            }
+        }
+
+        // Entities -> grid: every live entity's tile points back at it, in bounds.
+        for (id, slot) in self.entities.iter().enumerate() {
+            let Some(e) = slot else { continue };
+            for t in e.tiles() {
+                if !in_bounds(t) {
+                    return Err(format!("entity {id} has an out-of-bounds tile {t}"));
+                }
+                if self.grid[idx(t)] != Some(id) {
+                    return Err(format!("entity {id}'s tile {t} isn't marked in the grid"));
+                }
+            }
+        }
+
+        if !self.free_consistent() {
+            return Err("free list disagrees with the entity slots".into());
+        }
+
+        if self.research.done.len() != TECHS.len() {
+            return Err(format!(
+                "research.done has {} entries, expected {}",
+                self.research.done.len(),
+                TECHS.len()
+            ));
+        }
+
+        // `fin` only formats a message the moment it finds a non-finite value, so
+        // the common all-finite case allocates nothing even over thousands of steps.
+        let mut bad: Option<String> = None;
+        macro_rules! fin {
+            ($v:expr, $($label:tt)*) => {
+                if !($v).is_finite() && bad.is_none() {
+                    bad = Some(format!($($label)*));
+                }
+            };
+        }
+
+        fin!(self.spawn.x, "spawn.x is {}", self.spawn.x);
+        fin!(self.spawn.y, "spawn.y is {}", self.spawn.y);
+        fin!(self.time, "time is {}", self.time);
+        fin!(self.evolution, "evolution is {}", self.evolution);
+        fin!(self.pollution_timer, "pollution_timer is {}", self.pollution_timer);
+        for (i, &c) in self.pollution.iter().enumerate() {
+            fin!(c, "pollution[{i}] is {c}");
+        }
+
+        fin!(self.player.pos.x, "player.pos.x is {}", self.player.pos.x);
+        fin!(self.player.pos.y, "player.pos.y is {}", self.player.pos.y);
+        fin!(self.player.hp, "player.hp is {}", self.player.hp);
+        fin!(self.player.calm, "player.calm is {}", self.player.calm);
+        fin!(self.player.respawn, "player.respawn is {}", self.player.respawn);
+        fin!(self.player.stride, "player.stride is {}", self.player.stride);
+
+        for (id, slot) in self.entities.iter().enumerate() {
+            let Some(e) = slot else { continue };
+            fin!(e.hp, "entity {id} hp is {}", e.hp);
+            fin!(e.calm, "entity {id} calm is {}", e.calm);
+            match &e.state {
+                State::Belt(b) => {
+                    fin!(b.len, "entity {id} belt len is {}", b.len);
+                    for (lane, items) in b.lanes.iter().enumerate() {
+                        for (k, &(_, p)) in items.iter().enumerate() {
+                            fin!(p, "entity {id} belt lane {lane} item {k} is {p}");
+                        }
+                    }
+                }
+                State::Splitter { .. } => {}
+                State::Arm { swing, .. } => fin!(*swing, "entity {id} arm swing is {}", *swing),
+                State::Chest { .. } => {}
+                State::Drill { timer, .. } => fin!(*timer, "entity {id} drill timer is {}", *timer),
+                State::Crafter(c) => {
+                    fin!(c.progress, "entity {id} crafter progress is {}", c.progress);
+                    fin!(c.fluid_in, "entity {id} crafter fluid_in is {}", c.fluid_in);
+                    fin!(c.fluid_out, "entity {id} crafter fluid_out is {}", c.fluid_out);
+                }
+                State::Lab { progress, .. } => fin!(*progress, "entity {id} lab progress is {}", *progress),
+                State::Generator { energy, load, .. } => {
+                    fin!(*energy, "entity {id} generator energy is {}", *energy);
+                    fin!(*load, "entity {id} generator load is {}", *load);
+                }
+                State::Pole | State::Solar | State::Wall => {}
+                State::Pipe { amount, .. } => fin!(*amount, "entity {id} pipe amount is {}", *amount),
+                State::Wellhead { amount } => fin!(*amount, "entity {id} wellhead amount is {}", *amount),
+                State::Sentry { dmg, cooldown, aim, .. } => {
+                    fin!(*dmg, "entity {id} sentry dmg is {}", *dmg);
+                    fin!(*cooldown, "entity {id} sentry cooldown is {}", *cooldown);
+                    fin!(*aim, "entity {id} sentry aim is {}", *aim);
+                }
+                State::Engine { .. } => {}
+                State::Hive { agitation, cooldown, guard_cd } => {
+                    fin!(*agitation, "entity {id} hive agitation is {}", *agitation);
+                    fin!(*cooldown, "entity {id} hive cooldown is {}", *cooldown);
+                    fin!(*guard_cd, "entity {id} hive guard_cd is {}", *guard_cd);
+                }
+            }
+        }
+
+        for (i, e) in self.enemies.iter().enumerate() {
+            fin!(e.pos.x, "enemy {i} pos.x is {}", e.pos.x);
+            fin!(e.pos.y, "enemy {i} pos.y is {}", e.pos.y);
+            fin!(e.hp, "enemy {i} hp is {}", e.hp);
+            fin!(e.target.x, "enemy {i} target.x is {}", e.target.x);
+            fin!(e.target.y, "enemy {i} target.y is {}", e.target.y);
+            fin!(e.home.x, "enemy {i} home.x is {}", e.home.x);
+            fin!(e.home.y, "enemy {i} home.y is {}", e.home.y);
+            fin!(e.cooldown, "enemy {i} cooldown is {}", e.cooldown);
+            fin!(e.patience, "enemy {i} patience is {}", e.patience);
+            fin!(e.phase, "enemy {i} phase is {}", e.phase);
+        }
+
+        match bad {
+            None => Ok(()),
+            Some(msg) => Err(msg),
+        }
+    }
+}
