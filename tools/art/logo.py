@@ -1,16 +1,14 @@
 #!/usr/bin/env python3
-"""Draw the Cogworks logo and window icons.
+"""Draw the Cogworks window icons.
 
     python3 tools/art/logo.py
 
-The logo is the game's window plaque blown up: an ink-outlined copper frame
-with corner rivets around a moss-green face, a brass cog emblem, and the name
-in cream M PLUS Rounded Bold with a thick ink outline.
+The main logo is now a painted image (docs/logo.png and assets/art/logo.png)
+and is no longer drawn here. `logo()` still draws the old procedural plaque,
+but `main` only writes the icons so the painted logo is never overwritten.
 
 Writes:
-  docs/logo.png             1600x520, for the README
-  assets/art/logo.png       640x208, the title-screen sprite
-  assets/icon/icon_{16,32,64}.png   the cog alone, for the window icon
+  assets/icon/icon_{16,32,64}.png   the brass cog, for the window icon
 
 Needs Pillow and numpy.
 """
@@ -165,12 +163,9 @@ def icon(n):
 
 def main():
     os.makedirs(os.path.join(REPO, "assets", "icon"), exist_ok=True)
-    big = logo(1600, 520)
-    big.save(os.path.join(REPO, "docs", "logo.png"))
-    logo(640, 208).save(os.path.join(REPO, "assets", "art", "logo.png"))
     for n in (16, 32, 64):
         icon(n).save(os.path.join(REPO, "assets", "icon", f"icon_{n}.png"))
-    print("wrote docs/logo.png, assets/art/logo.png, assets/icon/icon_*.png")
+    print("wrote assets/icon/icon_*.png")
 
 
 if __name__ == "__main__":
