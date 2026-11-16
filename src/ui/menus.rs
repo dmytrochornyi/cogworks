@@ -59,9 +59,11 @@ fn save_summary(g: &Game) -> String {
 /// The logo's drop-in geometry: `(top, width, height)`, used for both drawing
 /// and testing the title card's fit on small windows.
 fn logo_layout(w: f32, h: f32, t: f32) -> (f32, f32, f32) {
-    let lw = (w * 0.5).clamp(320.0, 640.0);
-    let lh = lw * 208.0 / 640.0;
-    let ly = (h * 0.1).max(space::L) - (1.0 - t) * 30.0;
+    // The painted logo is 960x594; cap its height so the menu card still fits.
+    const ASPECT: f32 = 594.0 / 960.0;
+    let lw = (w * 0.5).clamp(320.0, 640.0).min(h * 0.36 / ASPECT);
+    let lh = lw * ASPECT;
+    let ly = (h * 0.06).max(space::L) - (1.0 - t) * 30.0;
     (ly, lw, lh)
 }
 

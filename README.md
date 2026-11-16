@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="docs/logo.png" alt="Cogworks" width="560">
+<img src="docs/logo.png" alt="Cogworks" width="520">
 
 **A cozy 2D automation game written in Rust.**
 
@@ -28,13 +28,17 @@ research count, then you can keep building.
 
 The art is a mix of painted sprites (kept in `assets/art/`) and pieces
 painted by the project's own tools: seamless ore fields, copper pipes, the
-robot's turned views and the logo. Sprites, sounds and the font are all
+robot's turned views and the window icon. Sprites, sounds and the font are all
 embedded in a single executable.
 
 ## Screenshots
 
 | | |
 | :---: | :---: |
+| ![The title screen over a late-game base](docs/screenshots/title-screen.jpg) | ![New game: normal or peaceful](docs/screenshots/new-game.jpg) |
+| *The title screen: continue your base or start fresh* | *New game: normal, or peaceful with no attacks* |
+| ![Settings: music, ambience, effects, look and fullscreen](docs/screenshots/settings.jpg) | ![The pause menu](docs/screenshots/pause-menu.jpg) |
+| *Settings for music, ambience, effects, look and fullscreen* | *The pause menu: save any time, or head back to the title* |
 | ![A late-game factory: assemblers, labs and the Grand Engine on one power grid](docs/screenshots/factory.jpg) | ![Ore deposits as continuous fields, with a coal patch to mine by hand](docs/screenshots/ore-fields.jpg) |
 | *A late-game base: assembly lines feeding the labs and the Grand Engine* | *Ore deposits, each one continuous field: hold right click to mine by hand* |
 | ![Wellhead, refinery and mixers joined by copper pipes](docs/screenshots/oil-and-pipes.jpg) | ![The first morning, with the welcome note](docs/screenshots/first-morning.jpg) |
@@ -129,7 +133,7 @@ cargo test                              # unit tests
 cargo run --release --bin gen_assets    # repaint every sprite into assets/
 python3 tools/art/fields.py             # ore-field textures and pipe pieces
 python3 tools/art/diagonals.py          # the robot's 3/4 views
-python3 tools/art/logo.py               # logo and window icon
+python3 tools/art/logo.py               # window icon
 ```
 
 The art scripts write into `assets/art/`; run `gen_assets` afterwards to pick
@@ -144,7 +148,7 @@ set up what the screenshot shows.
 | `src/render/` | Camera, ground, entities, lighting, sky and particles |
 | `src/ui/` | HUD, panels, menus, tooltips, minimap and shared widgets |
 | `src/bin/gen_assets/` | Procedural sprite painter that writes `assets/sprites/` |
-| `tools/art/` | Scripts that prepare painted art and paint the ore fields, pipes, robot views and logo |
+| `tools/art/` | Scripts that prepare painted art and paint the ore fields, pipes, robot views and window icon |
 | `tools/music/` | Offline build tool for the music, ambience and sound effects ([README](tools/music/README.md)) |
 
 ## Assets and licences
