@@ -35,14 +35,14 @@ embedded in a single executable.
 
 | | |
 | :---: | :---: |
-| ![A late-game factory: assemblers and labs on one power grid](docs/screenshots/factory.jpg) | ![Ore deposits as continuous fields next to a forest](docs/screenshots/ore-fields.jpg) |
-| *A late-game base: assembly lines feeding the labs* | *Ore deposits, each one continuous field, beside the woods* |
+| ![A late-game factory: assemblers, labs and the Grand Engine on one power grid](docs/screenshots/factory.jpg) | ![Ore deposits as continuous fields, with a coal patch to mine by hand](docs/screenshots/ore-fields.jpg) |
+| *A late-game base: assembly lines feeding the labs and the Grand Engine* | *Ore deposits, each one continuous field: hold right click to mine by hand* |
 | ![Wellhead, refinery and mixers joined by copper pipes](docs/screenshots/oil-and-pipes.jpg) | ![The first morning, with the welcome note](docs/screenshots/first-morning.jpg) |
 | *Tar to naphtha: wellhead, refinery and mixers on copper pipes* | *The first morning: a few tools and the welcome note* |
-| ![Backpack and workbench with a recipe card](docs/screenshots/backpack-workbench.jpg) | ![Research tree](docs/screenshots/research.jpg) |
+| ![Backpack and workbench](docs/screenshots/backpack-workbench.jpg) | ![Research tree](docs/screenshots/research.jpg) |
 | *Backpack and workbench: missing parts are crafted for you* | *The research tree, from Logistics up to the Grand Engine* |
-| ![The lamps come on at dusk](docs/screenshots/dusk-lanterns.jpg) | |
-| *Lamp poles light the base as dusk falls* | |
+| ![Full-window world map with ore, buildings and hives](docs/screenshots/world-map.jpg) | ![The lamps come on at dusk](docs/screenshots/dusk-lanterns.jpg) |
+| *The world map: every ore field, building and hive at a glance* | *Lamp poles light the base as dusk falls* |
 
 ## Features
 
