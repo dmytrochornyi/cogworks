@@ -20,13 +20,36 @@ fn machine_cols(w: f32) -> usize {
     ((w + GAP) / (SLOT + GAP)).floor().max(1.0) as usize
 }
 
+/// Gap between the "Recipe" label and the recipe slot grid, so the label's
+/// descenders don't touch the first row of slots.
+const RECIPE_LABEL_GAP: f32 = 22.0;
+
+/// Honest toast for an insert: "Nothing to insert" when the player carried none
+/// of what the machine wanted, else the count with a correct plural.
+fn inserted_feedback(n: u32) -> String {
+    match n {
+        0 => "Nothing to insert".to_string(),
+        1 => "Inserted 1 item".to_string(),
+        n => format!("Inserted {n} items"),
+    }
+}
+
+/// The chest's "Store items" uses "store" rather than "insert".
+fn stored_feedback(n: u32) -> String {
+    match n {
+        0 => "Nothing to store".to_string(),
+        1 => "Stored 1 item".to_string(),
+        n => format!("Stored {n} items"),
+    }
+}
+
 fn building_body_height(g: &Game, id: usize, body_w: f32) -> f32 {
     let e = g.world.entity(id);
     match &e.state {
         State::Crafter(c) => {
             let recipes = g.world.machine_recipes(e.kind);
             let cols = machine_cols(body_w);
-            let mut h = space::XL + recipes.len().div_ceil(cols) as f32 * (SLOT + GAP) + space::M;
+            let mut h = RECIPE_LABEL_GAP + recipes.len().div_ceil(cols) as f32 * (SLOT + GAP) + space::M;
             if let Some(rid) = c.recipe {
                 let rec = &RECIPES[rid];
                 h += 22.0 + 12.0 + 12.0;
@@ -82,20 +105,22 @@ pub(crate) fn building_panel(g: &mut Game, id: usize) {
     let left_btn = Rect::new(x, btn_y, half, 36.0);
     let right_btn = Rect::new(x + half + space::S, btn_y, half, 36.0);
 
-    bar(Rect::new(x, y - 4.0, 90.0, 8.0), e.hp / e.kind.max_hp(), theme::color(theme::SAGE_500));
+    // HP: a small heart beside the bar so the unlabelled health readout is clear.
+    a.draw_centered("icon_heart", vec2(x + 9.0, y), Vec2::splat(16.0), 0.0, WHITE);
+    bar(Rect::new(x + 20.0, y - 4.0, 82.0, 8.0), e.hp / e.kind.max_hp(), theme::color(theme::SAGE_500));
     if e.kind.draw_kw() > 0.0 {
         let (p, col) = match e.net.and_then(|n| g.world.power.nets.get(n)) {
             None => ("No power · put a pole nearby".to_string(), PEACH),
             Some(n) => (format!("Power {:.0}% · {:.0}/{:.0} kW", n.sat * 100.0, n.demand.min(n.supply), n.supply), TEXT_DIM),
         };
-        text(&a, &p, x + 102.0, y - 6.0, TextSize::S, col);
+        text(&a, &p, x + 110.0, y - 6.0, TextSize::S, col);
     }
     y += 22.0;
 
     match &e.state {
         State::Crafter(c) => {
             text(&a, "Recipe", x, y, TextSize::M, TEXT);
-            y += 14.0;
+            y += RECIPE_LABEL_GAP;
             let recipes = g.world.machine_recipes(e.kind);
             let cols = machine_cols(content.w);
             for (k, &rid) in recipes.iter().enumerate() {
@@ -141,7 +166,7 @@ pub(crate) fn building_panel(g: &mut Game, id: usize) {
             }
             if primary_button(&a, left_btn, "Insert ingredients", c.recipe.is_some(), &mut g.clickables) {
                 let n = g.world.insert_from_player(id);
-                g.toast(format!("Inserted {n} items"));
+                g.toast(inserted_feedback(n));
             }
             if button(&a, right_btn, "Take output", c.out.total() > 0, &mut g.clickables) {
                 g.world.take_to_player(id);
@@ -162,7 +187,7 @@ pub(crate) fn building_panel(g: &mut Game, id: usize) {
             stock_lines(&a, input, x, &mut y);
             if primary_button(&a, left_btn, "Insert data", true, &mut g.clickables) {
                 let n = g.world.insert_from_player(id);
-                g.toast(format!("Inserted {n} items"));
+                g.toast(inserted_feedback(n));
             }
         }
         State::Generator { fuel, load, .. } => {
@@ -172,7 +197,7 @@ pub(crate) fn building_panel(g: &mut Game, id: usize) {
             text(&a, "Burns coal or fuel cells", x, y + 4.0, TextSize::S, TEXT_DIM);
             if primary_button(&a, left_btn, "Add fuel", true, &mut g.clickables) {
                 let n = g.world.insert_from_player(id);
-                g.toast(format!("Inserted {n} items"));
+                g.toast(inserted_feedback(n));
             }
         }
         State::Chest { stock } => {
@@ -198,7 +223,7 @@ pub(crate) fn building_panel(g: &mut Game, id: usize) {
             }
             if primary_button(&a, left_btn, "Store items", true, &mut g.clickables) {
                 let n = g.world.insert_from_player(id);
-                g.toast(format!("Stored {n} items"));
+                g.toast(stored_feedback(n));
             }
             if button(&a, right_btn, "Take all", stock.total() > 0, &mut g.clickables) {
                 g.world.take_to_player(id);
@@ -210,7 +235,7 @@ pub(crate) fn building_panel(g: &mut Game, id: usize) {
             stock_lines(&a, ammo, x, &mut y);
             if primary_button(&a, left_btn, "Load ammo", true, &mut g.clickables) {
                 let n = g.world.insert_from_player(id);
-                g.toast(format!("Inserted {n} items"));
+                g.toast(inserted_feedback(n));
             }
         }
         State::Engine { cores } => {
@@ -222,7 +247,8 @@ pub(crate) fn building_panel(g: &mut Game, id: usize) {
                 theme::color(theme::AETHER_HI),
             );
             if primary_button(&a, left_btn, "Feed cores", true, &mut g.clickables) {
-                g.world.insert_from_player(id);
+                let n = g.world.insert_from_player(id);
+                g.toast(inserted_feedback(n));
             }
         }
         State::Drill { out, .. } => {
@@ -240,5 +266,20 @@ pub(crate) fn building_panel(g: &mut Game, id: usize) {
                 y += 24.0;
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn insert_feedback_is_honest_and_plural() {
+        assert_eq!(inserted_feedback(0), "Nothing to insert");
+        assert_eq!(inserted_feedback(1), "Inserted 1 item");
+        assert_eq!(inserted_feedback(2), "Inserted 2 items");
+        assert_eq!(stored_feedback(0), "Nothing to store");
+        assert_eq!(stored_feedback(1), "Stored 1 item");
+        assert_eq!(stored_feedback(7), "Stored 7 items");
     }
 }

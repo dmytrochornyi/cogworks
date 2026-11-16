@@ -7,7 +7,7 @@ use macroquad::prelude::*;
 use crate::theme::{self, line, radius};
 
 use super::metrics::ui_mouse;
-use super::style::{BG2, EDGE, SHADE};
+use super::style::{BG2, SHADE};
 
 // Logo plaque colours for windows, tooltips, toasts and banners.
 const PLAQUE_INK: u32 = 0x3a2418;
@@ -139,12 +139,12 @@ pub(super) fn surface(r: Rect, elev: Elevation) {
 }
 
 pub(super) fn surface_alpha(r: Rect, elev: Elevation, alpha: f32) {
-    let (rad, fill, border, border_w, shadow) = match elev {
-        Elevation::Panel => (radius::LG, theme::alpha(theme::BG, 0.96), EDGE, line::BASE, true),
-        Elevation::Card => (radius::MD, BG2, theme::alpha(theme::EDGE, 0.7), line::BASE, false),
-        Elevation::Tooltip => (radius::MD, theme::alpha(theme::BG, 0.98), EDGE, line::BASE, true),
-        Elevation::Toast => (radius::MD, theme::alpha(theme::BG, 0.94), EDGE, line::BASE, true),
-        Elevation::Banner => (radius::LG, theme::alpha(theme::BG, 0.92), EDGE, line::BASE, true),
+    let (rad, fill, shadow) = match elev {
+        Elevation::Panel => (radius::LG, theme::alpha(theme::BG, 0.96), true),
+        Elevation::Card => (radius::MD, BG2, false),
+        Elevation::Tooltip => (radius::MD, theme::alpha(theme::BG, 0.98), true),
+        Elevation::Toast => (radius::MD, theme::alpha(theme::BG, 0.94), true),
+        Elevation::Banner => (radius::LG, theme::alpha(theme::BG, 0.92), true),
     };
     let mix_a = |c: Color, a: f32| theme::with_alpha(c, c.a * a * alpha);
     if shadow {
@@ -179,12 +179,13 @@ pub(super) fn surface_alpha(r: Rect, elev: Elevation, alpha: f32) {
                 circle(c - vec2(0.6, 0.6), 1.5, mix_a(theme::color(PLAQUE_COPPER_HI), 1.0));
             }
         }
-        let _ = (border, border_w);
         return;
     }
     // Border as two filled rounded rects: an outer one in the border colour and
     // an inner one in the fill colour, inset by the border width. This gives a
     // clean smooth edge band instead of an anti-aliased outline line.
+    let border = theme::alpha(theme::EDGE, 0.7);
+    let border_w = line::BASE;
     rrect(r, rad, mix_a(border, 1.0));
     rrect(
         Rect::new(r.x + border_w, r.y + border_w, r.w - 2.0 * border_w, r.h - 2.0 * border_w),

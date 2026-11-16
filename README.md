@@ -23,7 +23,8 @@ lo-fi soundtrack. You start alone in a meadow with a few tools. Ore patches sit
 all around, and the hives at the edge of the map don't like smoke.
 Build a chain from drills to smelters to assemblers to labs, unlock new
 technology one vial at a time, and grow the base until it can power the
-Grand Engine.
+Grand Engine. Waking it brings up a one-time win panel with your day and
+research count, then you can keep building.
 
 The art is a mix of painted sprites (kept in `assets/art/`) and pieces
 painted by the project's own tools: seamless ore fields, copper pipes, the
@@ -34,14 +35,14 @@ embedded in a single executable.
 
 | | |
 | :---: | :---: |
-| ![A late-game factory: assemblers and labs on one power grid](docs/screenshots/factory.jpg) | ![Ore deposits as continuous fields next to a forest](docs/screenshots/ore-fields.jpg) |
-| *A late-game base: assembly lines feeding the labs* | *Ore deposits, each one continuous field, beside the woods* |
+| ![A late-game factory: assemblers, labs and the Grand Engine on one power grid](docs/screenshots/factory.jpg) | ![Ore deposits as continuous fields, with a coal patch to mine by hand](docs/screenshots/ore-fields.jpg) |
+| *A late-game base: assembly lines feeding the labs and the Grand Engine* | *Ore deposits, each one continuous field: hold right click to mine by hand* |
 | ![Wellhead, refinery and mixers joined by copper pipes](docs/screenshots/oil-and-pipes.jpg) | ![The first morning, with the welcome note](docs/screenshots/first-morning.jpg) |
 | *Tar to naphtha: wellhead, refinery and mixers on copper pipes* | *The first morning: a few tools and the welcome note* |
-| ![Backpack and workbench with a recipe card](docs/screenshots/backpack-workbench.jpg) | ![Research tree](docs/screenshots/research.jpg) |
+| ![Backpack and workbench](docs/screenshots/backpack-workbench.jpg) | ![Research tree](docs/screenshots/research.jpg) |
 | *Backpack and workbench: missing parts are crafted for you* | *The research tree, from Logistics up to the Grand Engine* |
-| ![The lamps come on at dusk](docs/screenshots/dusk-lanterns.jpg) | |
-| *Lamp poles light the base as dusk falls* | |
+| ![Full-window world map with ore, buildings and hives](docs/screenshots/world-map.jpg) | ![The lamps come on at dusk](docs/screenshots/dusk-lanterns.jpg) |
+| *The world map: every ore field, building and hive at a glance* | *Lamp poles light the base as dusk falls* |
 
 ## Features
 
@@ -52,9 +53,9 @@ embedded in a single executable.
 - **Fluids**: wellheads, pipes, refineries and mixers for crude tar and naphtha
 - **Defence**: pollution wakes the hives; hold them off with walls and sentries, or play in peaceful mode
 - **Atmosphere**: a day-to-dusk cycle with real-time lighting, a lo-fi radio, foley, and gentle environmental ambience (soft bells, mallets, pads and water by day; crickets at night)
-- **Menus**: a title screen with Continue and New game (normal or peaceful), a pause menu, and settings for music, ambience, effects and fullscreen
+- **Menus**: a title screen with Continue and New game (normal or peaceful), a pause menu, and settings for music, ambience, effects, look and fullscreen
 - **A hovering robot**: glides smoothly and turns to face all eight directions as it moves
-- **Quality of life**: quickbar binding, building copy (Q), icon tooltips, minimap, save/load and autosave
+- **Quality of life**: quickbar binding, building copy (Q), icon tooltips, minimap, full-window world map, save/load and autosave
 
 ## Download
 
@@ -80,8 +81,16 @@ sudo apt install pkg-config libx11-dev libxi-dev libgl1-mesa-dev libasound2-dev
 
 The game saves to `cogworks_save.json` (F5) and `cogworks_autosave.json`
 in the directory you run it from. The title screen continues the newest of
-the two, and F9 loads it during play. Settings are kept in
-`cogworks_settings.json`. To skip the title screen, run `cogworks <save file>`.
+the two, and F9 loads it during play. Closing the window autosaves first so
+nothing is lost, and starting a new game keeps the previous autosave aside as
+`cogworks_autosave.prev.json`. Settings are kept in `cogworks_settings.json`.
+To skip the title screen, run `cogworks <save file>`.
+
+If the game crashes, it appends the panic message, its location and a backtrace
+to `cogworks_crash.log`, and saves the world to `cogworks_crash_save.json` so a
+broken state can't overwrite your good saves. Run
+`cogworks cogworks_crash_save.json` to load that emergency save; the same
+validation and repair that protects normal saves applies to it.
 
 ## Controls
 
@@ -96,10 +105,12 @@ the two, and F9 loads it during play. Settings are kept in
 | <kbd>Q</kbd> | Copy the hovered building, or empty your hands |
 | <kbd>E</kbd> / <kbd>Tab</kbd> | Backpack and workbench |
 | <kbd>T</kbd> | Research |
+| <kbd>N</kbd> | Map (or click the minimap) |
 | <kbd>Esc</kbd> | Close the panel, put the tool away, or open the pause menu |
 | <kbd>Space</kbd> | Pause |
 | <kbd>O</kbd> | Pollution overlay |
 | <kbd>P</kbd> | Peaceful mode |
+| <kbd>V</kbd> | Cycle the look (also in Settings) |
 | <kbd>M</kbd> | Toggle music |
 | <kbd>F5</kbd> / <kbd>F9</kbd> | Save / load |
 | <kbd>H</kbd> / <kbd>F1</kbd> | Help note |

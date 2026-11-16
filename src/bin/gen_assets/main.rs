@@ -127,7 +127,6 @@ fn main() {
         ("bird_0", 64, 48),
         ("bird_1", 64, 48),
         ("item_wood", 48, 48),
-        ("paper", 128, 128),
     ] {
         add(name, Canvas::new(w, h));
     }

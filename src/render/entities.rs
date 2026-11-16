@@ -84,16 +84,41 @@ pub fn draw_item_tint(a: &Assets, c: Vec2, size: f32, item: Item, tint: Color) {
         Some(key) => a.draw_centered(key, c, Vec2::splat(size), 0.0, tint),
         None => {
             if let Some(kind) = item.place_kind() {
-                let native = a.size(body_key(kind));
-                let fit = size / native.max_element();
-                let d = dims(kind, Dir::E).as_vec2();
-                let z = fit * PX;
-                // Centre the footprint, not the sprite (poles are taller than their tile).
-                let s0 = c - d * z * 0.5 + vec2(0.0, (native.y / PX - d.y).max(0.0) * z * 0.5);
-                draw_kind(a, kind, Dir::E, s0, z, tint);
+                if kind == Kind::Arm {
+                    // The arm's limb reaches past its base tile, so fit the
+                    // whole arm — base, limb and hand — into the slot.
+                    let (s0, z) = arm_icon_fit(c, size);
+                    draw_kind(a, kind, Dir::E, s0, z, tint);
+                } else {
+                    let native = a.size(body_key(kind));
+                    let fit = size / native.max_element();
+                    let d = dims(kind, Dir::E).as_vec2();
+                    let z = fit * PX;
+                    // Centre the footprint, not the sprite (poles are taller than their tile).
+                    let s0 = c - d * z * 0.5 + vec2(0.0, (native.y / PX - d.y).max(0.0) * z * 0.5);
+                    draw_kind(a, kind, Dir::E, s0, z, tint);
+                }
             }
         }
     }
+}
+
+/// How far the arm's hand reaches from its base centre, and the hand sprite's
+/// width, in sprite px at one tile. Shared by the limb drawing and the icon fit.
+const ARM_REACH: f32 = 48.0;
+const ARM_HAND: f32 = 24.0;
+
+/// Fits an arm icon into a `size`×`size` box, returning the base tile's
+/// top-left and its tile size for [`draw_kind`]. The arm's limb reaches past
+/// its base tile, so fitting only the base lets the hand spill out of a slot.
+fn arm_icon_fit(c: Vec2, size: f32) -> (Vec2, f32) {
+    // In tiles from the base centre: the limb reaches `ARM_REACH / PX` and the
+    // hand caps it by half its width, so the far edge is `reach` out; the base
+    // ends half a tile on the near side. The whole arm is `reach + 0.5` tiles.
+    let reach = (ARM_REACH + ARM_HAND * 0.5) / PX;
+    let z = size / (reach + 0.5);
+    let centre_x = c.x + (reach - 0.5) * 0.5 * z;
+    (vec2(centre_x - z * 0.5, c.y - z * 0.5), z)
 }
 
 /// Draws a building's static look with its footprint's top-left at screen `s0`.
@@ -150,8 +175,8 @@ fn draw_arm_limb(a: &Assets, c: Vec2, ang: f32, z: f32, tint: Color) {
         tint,
         ..Default::default()
     });
-    let hand = c + Vec2::from_angle(ang) * 48.0 * k;
-    a.draw_centered("arm_hand", hand, Vec2::splat(24.0 * k), ang, tint);
+    let hand = c + Vec2::from_angle(ang) * ARM_REACH * k;
+    a.draw_centered("arm_hand", hand, Vec2::splat(ARM_HAND * k), ang, tint);
 }
 
 /// The resting limb angle for an arm facing `dir`: it points at the pickup side
@@ -546,5 +571,18 @@ mod tests {
         }
         let west = arm_idle_angle(Dir::E);
         assert!((west.abs() - PI).abs() < 1e-5, "Dir::E should point west, got {west}");
+    }
+
+    #[test]
+    fn arm_icon_reach_stays_in_box() {
+        let (s0, z) = arm_icon_fit(Vec2::ZERO, 48.0);
+        let k = z / PX;
+        let centre = s0 + Vec2::splat(z * 0.5);
+        // The hand reaches ARM_REACH out and caps with half its width; the base
+        // ends PX/2 (half a tile) on the near side. Both must stay inside ±24.
+        let left = centre.x - (ARM_REACH + ARM_HAND * 0.5) * k;
+        let right = centre.x + PX * 0.5 * k;
+        assert!(left >= -24.0 - 1e-3, "arm reach spills left: {left}");
+        assert!(right <= 24.0 + 1e-3, "arm base spills right: {right}");
     }
 }

@@ -1,5 +1,6 @@
 use macroquad::prelude::{IVec2, KeyCode, MouseButton, Vec2, is_key_down, is_key_pressed, is_mouse_button_down, is_mouse_button_pressed, ivec2, mouse_wheel};
 
+use crate::audio::music_toggle;
 use crate::game::{Game, Panel};
 use crate::items::Item;
 use crate::save;
@@ -119,6 +120,31 @@ pub fn right_action(
     }
 }
 
+/// What R should rotate this frame, decided purely from whether a building is
+/// held and whether play is paused / in reach, so it can be unit-tested.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum RotateAction {
+    /// Rotate the building held in hand. Always allowed: this only changes the
+    /// ghost preview, never the world, so pausing or leaving reach is fine.
+    Tool,
+    /// Rotate the placed building under the cursor.
+    World,
+    /// Do nothing (no tool in hand, and paused or out of reach).
+    None,
+}
+
+/// Decides what R rotates: a held building rotates its ghost no matter what, but
+/// a placed building only rotates while playing and within reach.
+pub fn rotate_action(has_tool: bool, paused: bool, in_reach: bool) -> RotateAction {
+    if has_tool {
+        RotateAction::Tool
+    } else if !paused && in_reach {
+        RotateAction::World
+    } else {
+        RotateAction::None
+    }
+}
+
 impl Game {
     pub(crate) fn input(&mut self, dt: f32) {
         let mut walk = Vec2::ZERO;
@@ -177,12 +203,17 @@ impl Game {
             }
         }
         let tile = self.mouse_tile();
+        let in_reach = self.world.player.in_reach(tile);
         if is_key_pressed(KeyCode::R) {
-            let ccw = is_key_down(KeyCode::LeftShift);
-            if self.tool.is_some() {
-                self.rot = if ccw { self.rot.ccw() } else { self.rot.cw() };
-            } else {
-                self.world.rotate(tile, !ccw);
+            // Right Shift keeps meaning counter-clockwise for both a held
+            // building and a placed one.
+            let ccw = is_key_down(KeyCode::LeftShift) || is_key_down(KeyCode::RightShift);
+            match rotate_action(self.tool.is_some(), self.paused, in_reach) {
+                RotateAction::Tool => {
+                    self.rot = if ccw { self.rot.ccw() } else { self.rot.cw() };
+                }
+                RotateAction::World => self.world.rotate(tile, !ccw),
+                RotateAction::None => {}
             }
         }
         if is_key_pressed(KeyCode::Q) {
@@ -210,11 +241,15 @@ impl Game {
         if is_key_pressed(KeyCode::T) {
             self.panel = if self.panel == Panel::Research { Panel::None } else { Panel::Research };
         }
+        if is_key_pressed(KeyCode::N) {
+            self.panel = if self.panel == Panel::Map { Panel::None } else { Panel::Map };
+        }
         if is_key_pressed(KeyCode::H) || is_key_pressed(KeyCode::F1) {
             self.show_help = !self.show_help;
         }
         if is_key_pressed(KeyCode::V) {
             self.look = self.look.next();
+            self.settings.look = self.look;
             self.toast(format!("Look: {}", self.look.name()));
         }
         if is_key_pressed(KeyCode::O) {
@@ -224,7 +259,15 @@ impl Game {
             self.paused = !self.paused;
         }
         if is_key_pressed(KeyCode::M) {
-            self.audio.toggle_music();
+            let (muted, music) = music_toggle(self.settings.music_muted, self.settings.music);
+            self.audio.set_muted(muted);
+            self.settings.music_muted = muted;
+            if music != self.settings.music {
+                let mut s = self.settings;
+                s.music = music;
+                self.apply_settings(s);
+            }
+            self.toast(if muted { "Music off" } else { "Music on" });
         }
         if is_key_pressed(KeyCode::P) {
             self.world.peaceful = !self.world.peaceful;
@@ -232,21 +275,28 @@ impl Game {
             self.toast(msg);
         }
         if is_key_pressed(KeyCode::F5) {
-            match save::save(&mut self.world, save::SAVE_PATH) {
-                Ok(()) => self.toast(format!("Saved to {}", save::SAVE_PATH)),
-                Err(e) => self.toast(e),
-            }
+            self.save_game();
         }
         if is_key_pressed(KeyCode::F9) {
-            match save::newest_save().ok_or_else(|| "No save yet: press F5 to save".to_string()).and_then(save::load) {
-                Ok(world) => {
-                    self.world = world;
+            match save::load_newest_or_fallback() {
+                Ok(Some(loaded)) => {
+                    self.world = loaded.world;
                     self.cam.pos = self.world.player.pos;
                     self.panel = Panel::None;
                     self.tool = None;
                     self.show_help = false;
-                    self.toast("Game loaded");
+                    self.deconstruct = None;
+                    self.last_drag = None;
+                    self.paused = false;
+                    match loaded.failed {
+                        Some(failed) => self.toast(format!("{failed} failed to load · loaded {} instead", loaded.slot)),
+                        None => self.toast("Game loaded"),
+                    }
+                    if let Some(note) = save::repair_toast(&loaded.notes) {
+                        self.toast(note);
+                    }
                 }
+                Ok(None) => self.toast("No save yet: press F5 to save"),
                 Err(e) => self.toast(e),
             }
         }
@@ -525,5 +575,22 @@ mod tests {
             right_action(true, false, None, ivec2(3, 4), true, true, false),
             RightAction::Mine(ivec2(3, 4))
         );
+    }
+
+    #[test]
+    fn held_building_rotates_its_ghost_always() {
+        // The held building's ghost rotates even while paused or out of reach.
+        assert_eq!(rotate_action(true, false, true), RotateAction::Tool);
+        assert_eq!(rotate_action(true, true, true), RotateAction::Tool);
+        assert_eq!(rotate_action(true, false, false), RotateAction::Tool);
+        assert_eq!(rotate_action(true, true, false), RotateAction::Tool);
+    }
+
+    #[test]
+    fn placed_building_rotates_only_while_playing_in_reach() {
+        assert_eq!(rotate_action(false, false, true), RotateAction::World);
+        assert_eq!(rotate_action(false, true, true), RotateAction::None, "paused: placed building won't rotate");
+        assert_eq!(rotate_action(false, false, false), RotateAction::None, "out of reach: placed building won't rotate");
+        assert_eq!(rotate_action(false, true, false), RotateAction::None);
     }
 }

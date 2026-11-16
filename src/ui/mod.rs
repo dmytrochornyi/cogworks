@@ -42,9 +42,14 @@ pub fn draw(g: &mut Game) {
     hud::quickbar(g);
     hud::craft_queue(g);
     minimap::minimap(g);
+    let a = g.assets.clone();
+    // The radio sits behind open panels (which may cover it) but above the
+    // world, so draw it before the panels.
+    hud::radio(g, &a);
     match g.panel {
         OpenPanel::Inventory => panels::inventory::inventory_panel(g),
         OpenPanel::Research => panels::research::research_panel(g),
+        OpenPanel::Map => panels::map::map_panel(g),
         OpenPanel::Building(id, _) => panels::building::building_panel(g, id),
         OpenPanel::None => {}
     }
@@ -55,8 +60,6 @@ pub fn draw(g: &mut Game) {
             g.tooltip = Some(Tip::Card { icon: g.world.describe_icon(tile), rows });
         }
     }
-    let a = g.assets.clone();
-    hud::radio(g, &a);
     hud::toasts(g, &a);
     if g.show_help {
         hud::help(g, &a);

@@ -7,6 +7,7 @@ mod logistics;
 mod player;
 mod power;
 mod production;
+mod repair;
 #[cfg(test)]
 mod tests;
 mod trees;
@@ -394,6 +395,10 @@ pub struct World {
     pub peaceful: bool,
     pub time: f32,
     pub won: bool,
+    /// Whether the player has seen the one-time win panel, so it shows once
+    /// per game. Old saves without the field load as `false`.
+    #[serde(default)]
+    pub won_seen: bool,
     pub spawn: Vec2,
     pollution_timer: f32,
     rng: Rng,

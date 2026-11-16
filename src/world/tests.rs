@@ -301,6 +301,20 @@ fn save_round_trip() {
 }
 
 #[test]
+fn old_save_without_won_seen_loads_as_unseen() {
+    // A save written before the win panel existed has no `won_seen` field, so
+    // the panel must still show once: the field defaults to false.
+    let mut w = World::new(7);
+    w.won = true;
+    w.won_seen = true;
+    let mut v = serde_json::to_value(&w).unwrap();
+    v.as_object_mut().unwrap().remove("won_seen");
+    let back: World = serde_json::from_value(v).unwrap();
+    assert!(back.won, "the won flag must survive the round trip");
+    assert!(!back.won_seen, "a save without won_seen loads as unseen");
+}
+
+#[test]
 fn deconstructing_tunnel_exit_refunds_underground_items() {
     let mut w = blank();
     build(&mut w, Kind::Tunnel, ivec2(10, 10), Dir::E);
@@ -606,4 +620,401 @@ fn walking_velocity_includes_both_axes() {
     let v = w.player.vel;
     assert!(v.x < 0.0 && v.y.abs() < 1e-6, "sideways velocity, got {v}");
     assert!((v.length() - super::player::PLAYER_SPEED).abs() < 1e-2, "full walking speed, got {}", v.length());
+}
+
+// --- Phase 1: save validation and repair ---
+
+#[test]
+fn fresh_world_loads_back_with_no_repair_notes() {
+    let w = World::new(11);
+    let json = serde_json::to_string(&w).unwrap();
+    let (back, notes) = crate::save::load_from_str(&json).unwrap();
+    assert!(notes.is_empty(), "repair should find nothing to fix: {notes:?}");
+    assert_eq!(back.res, w.res);
+    assert_eq!(back.entities.len(), w.entities.len());
+    assert_eq!(back.research.done, w.research.done);
+    assert_eq!(back.player.inv, w.player.inv);
+}
+
+#[test]
+fn short_research_done_is_padded_and_every_tech_is_queryable() {
+    let mut w = World::new(13);
+    w.research.done.pop(); // a save made before the newest tech existed
+    assert_eq!(w.research.done.len(), TECHS.len() - 1);
+    let json = serde_json::to_string(&w).unwrap();
+    let (back, notes) = crate::save::load_from_str(&json).unwrap();
+    assert_eq!(back.research.done.len(), TECHS.len());
+    assert!(!notes.is_empty());
+    assert!(!back.research.done[TECHS.len() - 1], "the padded tech starts undone");
+    for k in 0..TECHS.len() {
+        let _ = back.tech_available(k); // must not panic for any tech
+    }
+}
+
+#[test]
+fn out_of_range_research_current_is_cleared() {
+    let mut w = World::new(17);
+    w.research.current = Some(TECHS.len());
+    let json = serde_json::to_string(&w).unwrap();
+    let (back, notes) = crate::save::load_from_str(&json).unwrap();
+    assert_eq!(back.research.current, None);
+    assert!(!notes.is_empty());
+}
+
+#[test]
+fn dangling_and_missing_grid_entries_are_rebuilt() {
+    let mut w = blank();
+    let wall = build(&mut w, Kind::Wall, ivec2(10, 10), Dir::N);
+    // Free a slot so a grid cell can point at a `None` entity.
+    w.delete(wall);
+    // A second wall whose tile is missing from the grid.
+    let wall2 = build(&mut w, Kind::Wall, ivec2(12, 10), Dir::N);
+    w.grid[idx(ivec2(12, 10))] = None;
+    // A cell pointing at the freed (None) slot.
+    w.grid[idx(ivec2(30, 30))] = Some(wall);
+
+    let json = serde_json::to_string(&w).unwrap();
+    let (back, _) = crate::save::load_from_str(&json).unwrap();
+
+    assert_eq!(back.entity_at(ivec2(12, 10)), Some(wall2));
+    assert_eq!(back.entity_at(ivec2(30, 30)), None);
+
+    // Every grid cell points at an entity covering it, and every entity's tiles
+    // point back at it.
+    for tile in 0..(MAP_W * MAP_H) as usize {
+        let p = ivec2(tile as i32 % MAP_W, tile as i32 / MAP_W);
+        if let Some(id) = back.grid[tile] {
+            assert!(back.entity(id).tiles().any(|t| t == p), "grid[{tile}] -> {id} doesn't cover {p}");
+        }
+    }
+    for (id, slot) in back.entities.iter().enumerate() {
+        let Some(e) = slot else { continue };
+        for t in e.tiles() {
+            assert_eq!(back.grid[idx(t)], Some(id), "entity {id} tile {t} doesn't point back");
+        }
+    }
+}
+
+#[test]
+fn overlapping_entities_drop_all_but_one() {
+    let mut w = blank();
+    let wall = build(&mut w, Kind::Wall, ivec2(10, 10), Dir::N);
+    // A second building stacked exactly on top of the first.
+    let clone = w.entity(wall).clone();
+    w.entities.push(Some(clone));
+
+    let json = serde_json::to_string(&w).unwrap();
+    let (back, notes) = crate::save::load_from_str(&json).unwrap();
+    assert_eq!(back.entities.iter().flatten().count(), 1);
+    assert_eq!(back.entity_at(ivec2(10, 10)), Some(wall));
+    assert!(notes.iter().any(|n| n.contains("Removed 1")), "notes: {notes:?}");
+}
+
+#[test]
+fn non_finite_numbers_are_repaired() {
+    let mut w = blank();
+    let wall = build(&mut w, Kind::Wall, ivec2(10, 10), Dir::N);
+    w.player.pos = vec2(f32::NAN, f32::INFINITY);
+    w.player.hp = f32::NAN;
+    w.time = f32::INFINITY;
+    w.evolution = f32::NAN;
+    w.pollution[0] = f32::NAN;
+    w.entity_mut(wall).hp = f32::INFINITY;
+    w.entity_mut(wall).calm = f32::NEG_INFINITY;
+    w.enemies.push(Enemy {
+        pos: vec2(f32::NAN, 1.0),
+        hp: 30.0,
+        brute: false,
+        target: vec2(0.0, 0.0),
+        home: vec2(0.0, 0.0),
+        cooldown: 0.0,
+        patience: 60.0,
+        phase: 0.0,
+    });
+    w.enemies.push(Enemy {
+        pos: vec2(5.0, 5.0),
+        hp: 30.0,
+        brute: false,
+        target: vec2(0.0, 0.0),
+        home: vec2(0.0, 0.0),
+        cooldown: 0.0,
+        patience: 60.0,
+        phase: 0.0,
+    });
+
+    let notes = w.repair().unwrap();
+    assert!(w.player.pos.is_finite(), "player moved to a finite spawn");
+    assert!(w.player.hp.is_finite());
+    assert!(w.time.is_finite());
+    assert!(w.evolution.is_finite());
+    assert!(w.pollution.iter().all(|c| c.is_finite()));
+    assert!(w.entities.iter().flatten().all(|e| e.hp.is_finite() && e.calm.is_finite()));
+    assert_eq!(w.enemies.len(), 1, "the NaN enemy is dropped, the healthy one stays");
+    assert!(w.enemies.iter().all(|e| e.pos.is_finite() && e.hp.is_finite()));
+    assert!(notes.iter().any(|n| n.contains("invalid number")), "notes: {notes:?}");
+    assert!(notes.iter().any(|n| n.contains("enemy")), "notes: {notes:?}");
+}
+
+#[test]
+fn a_dead_player_with_negative_hp_is_not_a_repair() {
+    let mut w = World::new(19);
+    w.player.hp = -7.5;
+    let notes = w.repair().unwrap();
+    assert!(notes.is_empty(), "negative but finite player hp is a valid dead state: {notes:?}");
+    assert_eq!(w.player.hp, 0.0);
+}
+
+#[test]
+fn wrong_structure_lengths_are_fatal() {
+    let mut w = World::new(29);
+    w.res.pop();
+    assert!(crate::save::load_from_str(&serde_json::to_string(&w).unwrap()).is_err());
+
+    let mut w = World::new(29);
+    w.grid.pop();
+    assert!(crate::save::load_from_str(&serde_json::to_string(&w).unwrap()).is_err());
+
+    let mut w = World::new(29);
+    w.pollution.pop();
+    assert!(crate::save::load_from_str(&serde_json::to_string(&w).unwrap()).is_err());
+
+    let mut w = World::new(29);
+    w.trees.pop(); // non-empty, wrong length
+    assert!(crate::save::load_from_str(&serde_json::to_string(&w).unwrap()).is_err());
+}
+
+#[test]
+fn truncated_and_garbage_json_are_errors_not_panics() {
+    let full = serde_json::to_string(&World::new(23)).unwrap();
+    for end in [0, 1, 5, full.len() / 2, full.len() - 1] {
+        let truncated = &full[..end];
+        assert!(crate::save::load_from_str(truncated).is_err(), "truncated at {end}");
+    }
+    for garbage in ["", "not json", "{\"res\": ", "42", "null", "[1, 2, 3]"] {
+        assert!(crate::save::load_from_str(garbage).is_err(), "garbage: {garbage:?}");
+    }
+}
+
+// --- Phase 3: soak and save-corruption tests ---
+
+const TICK: f32 = 1.0 / 60.0;
+
+/// Every kind the player can place (everything but the Hive).
+fn placeable() -> Vec<Kind> {
+    Kind::ALL.iter().copied().filter(|k| k.item().is_some()).collect()
+}
+
+/// A random tile within `span` tiles of the player, in each axis.
+fn near(w: &World, rng: &mut Rng, span: i32) -> IVec2 {
+    let center = w.player.pos.floor().as_ivec2();
+    center
+        + ivec2(
+            (rng.next() % span as u64) as i32 - span / 2,
+            (rng.next() % span as u64) as i32 - span / 2,
+        )
+}
+
+/// Clears trees and ore from a small rectangle so the deterministic combat
+/// pocket can be built on clean ground regardless of the seed.
+fn clear_patch(w: &mut World, lo: IVec2, hi: IVec2) {
+    for y in lo.y..=hi.y {
+        for x in lo.x..=hi.x {
+            let p = ivec2(x, y);
+            if !in_bounds(p) {
+                continue;
+            }
+            w.res[idx(p)] = None;
+            if !w.trees.is_empty() {
+                w.trees[idx(p)] = 0;
+            }
+        }
+    }
+}
+
+/// Whether any building has taken damage (its hp is below its max).
+fn any_building_damaged(w: &World) -> bool {
+    w.entities.iter().flatten().any(|e| e.hp < e.kind.max_hp())
+}
+
+/// Total clips a sentry still holds.
+fn sentry_ammo(w: &World, sentry: usize) -> u32 {
+    match &w.entity(sentry).state {
+        State::Sentry { ammo, .. } => ammo.total(),
+        _ => 0,
+    }
+}
+
+/// Whether `sentry` has consumed any of the ammo it started with.
+fn sentry_fired(w: &World, sentry: usize, initial_ammo: u32) -> bool {
+    w.entities.get(sentry).and_then(|s| s.as_ref()).is_some_and(|e| match &e.state {
+        State::Sentry { ammo, .. } => ammo.total() < initial_ammo,
+        _ => false,
+    })
+}
+
+/// Builds a deterministic combat pocket a little east of the landing site, far
+/// enough from the player that enemies chew buildings instead of chasing the
+/// robot. Returns the sentry's entity id.
+fn provoke_combat(w: &mut World) -> usize {
+    let o = w.spawn.as_ivec2();
+    let (wall_at, sentry_at, hive_at) = (o + ivec2(20, 0), o + ivec2(20, 6), o + ivec2(20, 12));
+    clear_patch(w, o + ivec2(18, -2), o + ivec2(24, 16));
+    let wall = build(w, Kind::Wall, wall_at, Dir::N);
+    let sentry = build(w, Kind::Sentry, sentry_at, Dir::N);
+    if let State::Sentry { ammo, .. } = &mut w.entity_mut(sentry).state {
+        ammo.add(Item::SlugClip, 4);
+    }
+    let hive = w.spawn_entity(Kind::Hive, hive_at, Dir::N);
+    // Agitate the hive: raise evolution (bigger, brutier waves) and dump
+    // pollution into its chunk so `update_hive` absorbs it and sends a wave.
+    w.evolution = 0.6;
+    w.pollute(w.entity(hive).center(), 300.0);
+    // A brute to tear the wall down, and mites for the sentry to pick off.
+    let wall_center = w.entity(wall).center();
+    let hive_center = w.entity(hive).center();
+    w.enemies.push(Enemy {
+        pos: wall_center + vec2(-1.5, 0.0),
+        hp: 150.0,
+        brute: true,
+        target: wall_center,
+        home: hive_center,
+        cooldown: 0.0,
+        patience: 300.0,
+        phase: 0.0,
+    });
+    for k in 0..3 {
+        w.enemies.push(Enemy {
+            pos: wall_center + vec2(2.5, 1.0 + k as f32),
+            hp: 30.0,
+            brute: false,
+            target: wall_center,
+            home: hive_center,
+            cooldown: 0.0,
+            patience: 300.0,
+            phase: k as f32,
+        });
+    }
+    sentry
+}
+
+#[test]
+fn soak_random_actions_never_break_invariants() {
+    // Kept below the plan's ~3000 to fit the whole suite in the ~20s debug budget
+    // once the invariant check scans the full grid after every step.
+    const STEPS: usize = 2500;
+    let placeable = placeable();
+    for (i, seed) in [3u64, 11, 0xDEAD_BEEF_CAFE].into_iter().enumerate() {
+        let mut w = World::new(seed);
+        // Plenty of every item, so placement succeeds far more often than not.
+        for item in Item::ALL {
+            w.player.inv.add(*item, 10_000);
+        }
+        let mut rng = Rng(seed ^ 0x9E37_79B9_7F4A_7C15);
+
+        // A deterministic combat pocket, then enough ticks for the hive to send
+        // a wave, the brute to bite the wall and the sentry to fire. The last
+        // seed also gets a long, uninterrupted stretch of simulated time.
+        let sentry = provoke_combat(&mut w);
+        let sentry_ammo = sentry_ammo(&w, sentry);
+        let combat_ticks = if i == 2 { 6000 } else { 600 };
+        let mut saw_enemy = false;
+        let mut saw_damage = false;
+        let mut saw_sentry = false;
+        for batch in 0..combat_ticks / 60 {
+            for _ in 0..60 {
+                w.update(TICK);
+            }
+            saw_enemy |= !w.enemies.is_empty();
+            saw_damage |= any_building_damaged(&w);
+            saw_sentry |= sentry_fired(&w, sentry, sentry_ammo);
+            if batch % 10 == 0 {
+                w.check_invariants()
+                    .unwrap_or_else(|e| panic!("seed {seed} combat batch {batch}: {e}"));
+            }
+        }
+        w.check_invariants()
+            .unwrap_or_else(|e| panic!("seed {seed} combat end: {e}"));
+        assert!(
+            saw_enemy && saw_damage && saw_sentry,
+            "seed {seed}: combat never materialized (enemy={saw_enemy}, damage={saw_damage}, sentry={saw_sentry})"
+        );
+
+        // Random hammering. Place/deconstruct/rotate are checked every step, but
+        // the full-grid scan after every tick batch dominates the run time, so
+        // tick batches are only checked every 10th one (and always at the end).
+        let mut tick_batch = 0usize;
+        for step in 0..STEPS {
+            match rng.next() % 4 {
+                0 => {
+                    let kind = placeable[(rng.next() as usize) % placeable.len()];
+                    let dir = Dir::ALL[(rng.next() as usize) % Dir::ALL.len()];
+                    let pos = near(&w, &mut rng, 13);
+                    let _ = w.place(kind, pos, dir); // errors (space, ore, reach) are fine
+                    w.check_invariants()
+                        .unwrap_or_else(|e| panic!("seed {seed} step {step}: {e}"));
+                }
+                1 => {
+                    let _ = w.deconstruct(near(&w, &mut rng, 25));
+                    w.check_invariants()
+                        .unwrap_or_else(|e| panic!("seed {seed} step {step}: {e}"));
+                }
+                2 => {
+                    w.rotate(near(&w, &mut rng, 25), rng.next().is_multiple_of(2));
+                    w.check_invariants()
+                        .unwrap_or_else(|e| panic!("seed {seed} step {step}: {e}"));
+                }
+                _ => {
+                    for _ in 0..1 + (rng.next() % 30) as usize {
+                        w.update(TICK);
+                    }
+                    if tick_batch.is_multiple_of(10) {
+                        w.check_invariants()
+                            .unwrap_or_else(|e| panic!("seed {seed} step {step}: {e}"));
+                    }
+                    tick_batch += 1;
+                }
+            }
+
+            if step % 500 == 499 {
+                let json = serde_json::to_string(&w).unwrap();
+                let (back, notes) = crate::save::load_from_str(&json).unwrap();
+                assert!(notes.is_empty(), "seed {seed} step {step}: repaired on load: {notes:?}");
+                back.check_invariants()
+                    .unwrap_or_else(|e| panic!("seed {seed} step {step} reload: {e}"));
+            }
+        }
+        w.check_invariants()
+            .unwrap_or_else(|e| panic!("seed {seed} end: {e}"));
+    }
+}
+
+#[test]
+fn corrupted_saves_load_or_error_without_panicking() {
+    let mut w = World::new(0xB0B);
+    for item in Item::ALL {
+        w.player.inv.add(*item, 1_000);
+    }
+    // A few hundred ticks so there's real state to corrupt.
+    for _ in 0..600 {
+        w.update(TICK);
+    }
+    let full = serde_json::to_string(&w).unwrap();
+    let bytes = full.as_bytes();
+
+    let mut rng = Rng(0x1234_5678_9ABC_DEF0 | 1);
+    for attempt in 0..200 {
+        let mut s = bytes.to_vec();
+        if rng.next().is_multiple_of(2) {
+            let at = (rng.next() as usize) % s.len();
+            s.truncate(at);
+        } else {
+            let at = (rng.next() as usize) % s.len();
+            s[at] = b' ' + (rng.next() % 95) as u8; // a printable ASCII byte
+        }
+        let text = String::from_utf8_lossy(&s);
+        if let Ok((back, _notes)) = crate::save::load_from_str(&text) {
+            back.check_invariants()
+                .unwrap_or_else(|e| panic!("attempt {attempt}: corrupt-but-loadable save broke invariants: {e}"));
+        }
+    }
 }

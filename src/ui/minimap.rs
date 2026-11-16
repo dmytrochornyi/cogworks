@@ -2,14 +2,16 @@
 
 use macroquad::prelude::*;
 
+use crate::game::Panel;
 use crate::render::*;
 use crate::theme::{self, line, radius, space};
 use crate::world::*;
 use crate::Game;
 
 use super::metrics::ui_width;
-use super::primitives::{Elevation, circle, circle_lines, rrect_lines, surface};
+use super::primitives::{Elevation, circle, circle_lines, clicked, hovered, rrect_lines, surface};
 use super::style::{BG, EDGE, MINIMAP, TEXT};
+use super::tooltip::Tip;
 
 pub struct Minimap {
     img: Image,
@@ -20,6 +22,11 @@ pub struct Minimap {
 impl Minimap {
     pub fn new() -> Self {
         Minimap { img: Image::gen_image_color(MAP_W as u16, MAP_H as u16, BLANK), tex: None, timer: 0.0 }
+    }
+
+    /// The world raster, shared with the full map so there is one texture.
+    pub fn tex(&self) -> Option<&Texture2D> {
+        self.tex.as_ref()
     }
 
     fn refresh(&mut self, world: &World) {
@@ -68,12 +75,27 @@ pub(super) fn minimap(g: &mut Game) {
         draw_texture_ex(t, r.x, r.y, WHITE, DrawTextureParams { dest_size: Some(r.size()), ..Default::default() });
     }
     rrect_lines(r, radius::SM, line::STRONG, EDGE);
-    let scale = MINIMAP / MAP_W as f32;
+    map_player_and_view(g, r);
+    // Only respond when no window covers the minimap: it draws before the
+    // panels, so without this guard a click that lands on a panel above it
+    // (e.g. a workbench recipe) would also open the map.
+    if g.hud_active() && g.panel == Panel::None && hovered(outer) {
+        g.tooltip = Some(Tip::Card { icon: None, rows: vec![(None, "Map · N or click".to_string())] });
+        if clicked(outer) {
+            g.panel = Panel::Map;
+        }
+    }
+    g.ui_rects.push(outer);
+}
+
+/// The player dot and the camera's view rectangle on a square map image at
+/// `r`, shared by the minimap and the full map so both read the same.
+pub(super) fn map_player_and_view(g: &Game, r: Rect) {
+    let scale = r.w / MAP_W as f32;
     let p = g.world.player.draw_pos * scale + r.point();
     circle(p, 4.0, TEXT);
     circle_lines(p, 4.0, line::BASE, BG);
     let lo = g.cam.s2w(Vec2::ZERO) * scale + r.point();
     let hi = g.cam.s2w(vec2(screen_width(), screen_height())) * scale + r.point();
     rrect_lines(Rect::new(lo.x, lo.y, hi.x - lo.x, hi.y - lo.y), 2.0, line::HAIR, theme::alpha(theme::CREAM, 0.6));
-    g.ui_rects.push(outer);
 }

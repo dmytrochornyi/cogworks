@@ -8,7 +8,7 @@ use crate::{Game, Panel as OpenPanel};
 
 use super::super::primitives::{clicked, hovered};
 use super::super::style::{EDGE, GAP, HEADER, SLOT, TEXT_DIM, TITLE};
-use super::super::text::text;
+use super::super::text::{text, text_h, text_w};
 use super::super::tooltip::Tip;
 use super::super::widgets::{Panel, recipe_icon, slot};
 use super::{centered, grid_rect, slide_px};
@@ -16,6 +16,18 @@ use super::{centered, grid_rect, slide_px};
 const INV_W: f32 = 1020.0;
 const INV_H: f32 = 580.0;
 const INV_COLS: usize = 9;
+
+/// The workbench header: where the "Shift-click to craft five" hint goes and
+/// where the recipe grid starts, as offsets from the workbench column's top.
+/// The hint sits beside the title when it fits; otherwise it drops to its own
+/// line and the grid moves down to stay clear of it.
+fn workbench_header(x: f32, right: f32, title_w: f32, title_h: f32, hint_w: f32) -> (f32, f32, f32) {
+    if x + title_w + space::M + hint_w <= right {
+        (x + title_w + space::M, 8.0, title_h + 4.0)
+    } else {
+        (x, title_h + 2.0, title_h + 2.0 + 20.0)
+    }
+}
 
 fn inv_slots(g: &Game) -> Vec<(Item, Rect)> {
     let r = centered(INV_W, INV_H);
@@ -70,9 +82,15 @@ pub(crate) fn inventory_panel(g: &mut Game) {
 
     let cx = content.x + INV_COLS as f32 * (SLOT + GAP) + space::XL;
     draw_line(cx - space::M, content.y, cx - space::M, r.bottom() - 44.0, line::HAIR, EDGE);
-    text(&a, "Workbench", cx, content.y, TextSize::Xl, TITLE);
-    text(&a, "Shift-click to craft five", content.right() - 200.0, content.y + 8.0, TextSize::Xs, TEXT_DIM);
-    let origin = vec2(cx, content.y + 38.0);
+    let title = "Workbench";
+    text(&a, title, cx, content.y, TextSize::Xl, TITLE);
+    let title_w = text_w(&a, title, TextSize::Xl);
+    let title_h = text_h(&a, TextSize::Xl);
+    let hint = "Shift-click to craft five";
+    let (hint_x, hint_off, grid_off) =
+        workbench_header(cx, content.right(), title_w, title_h, text_w(&a, hint, TextSize::Xs));
+    text(&a, hint, hint_x, content.y + hint_off, TextSize::Xs, TEXT_DIM);
+    let origin = vec2(cx, content.y + grid_off);
     let recipes: Vec<usize> = (0..RECIPES.len()).filter(|&id| RECIPES[id].hand && g.world.recipe_unlocked(id)).collect();
     let shift = is_key_down(KeyCode::LeftShift) || is_key_down(KeyCode::RightShift);
     let cols = ((content.right() - cx + GAP) / (SLOT + GAP)).floor().max(1.0) as usize;
@@ -91,4 +109,22 @@ pub(crate) fn inventory_panel(g: &mut Game) {
     }
     let foot = "Missing parts are crafted for you · machine-only recipes are set inside Assemblers.";
     text(&a, foot, content.x, r.bottom() - 26.0, TextSize::S, TEXT_DIM);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn workbench_hint_never_overprints_the_title() {
+        // Plenty of room: the hint sits beside the title and the grid stays high.
+        let (hx, _hy, gy) = workbench_header(744.0, 1206.0, 170.0, 34.0, 150.0);
+        assert!(hx >= 744.0 + 170.0 + space::M - 0.01, "hint overlaps the title");
+        assert!(gy < 40.0, "grid should not move down when the hint fits");
+        // No room: the hint drops below the title and the grid moves down too.
+        let (hx, hy, gy) = workbench_header(744.0, 760.0, 170.0, 34.0, 150.0);
+        assert_eq!(hx, 744.0);
+        assert!(hy > 34.0, "hint must sit below the title");
+        assert!(gy > hy, "grid must sit below the hint");
+    }
 }

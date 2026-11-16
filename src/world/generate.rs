@@ -21,6 +21,7 @@ impl World {
             peaceful: false,
             time: 0.0,
             won: false,
+            won_seen: false,
             spawn,
             pollution_timer: 0.0,
             rng: Rng(seed.rotate_left(17) | 1),

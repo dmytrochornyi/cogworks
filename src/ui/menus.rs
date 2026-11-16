@@ -17,18 +17,32 @@ use super::widgets::{Panel, button, primary_button};
 
 const BTN_H: f32 = 46.0;
 const CARD_W: f32 = 380.0;
+const PAUSE_H: f32 = 400.0;
 
-/// Darkens the world behind a menu: a flat veil plus heavier top and bottom bands.
+/// Darkens the world behind a menu: a flat veil plus smooth top and bottom
+/// falloff, drawn as vertex-coloured quads so the shading never bands.
 fn veil(strength: f32) {
     let (w, h) = (ui_width(), ui_height());
     draw_rectangle(0.0, 0.0, w, h, theme::rgba(0.10, 0.06, 0.04, 0.28 * strength));
-    for k in 0..24 {
-        let f = k as f32 / 24.0;
-        let a = (1.0 - f).powi(2) * 0.35 * strength;
-        let band = h * 0.3 / 24.0;
-        draw_rectangle(0.0, f * h * 0.3, w, band + 1.0, theme::rgba(0.10, 0.06, 0.04, a));
-        draw_rectangle(0.0, h - (f + 1.0 / 24.0) * h * 0.3, w, band + 1.0, theme::rgba(0.10, 0.06, 0.04, a));
-    }
+    let band = h * 0.3;
+    let peak = 0.35 * strength;
+    gradient(0.0, 0.0, w, band, peak, 0.0);
+    gradient(0.0, h - band, w, band, 0.0, peak);
+}
+
+/// A vertical alpha gradient over the `w`×`h` rectangle at `(x, y)`: `top`
+/// alpha at its top edge fading to `bottom` alpha at its bottom edge. One quad
+/// of vertex colours, so translucent shading stays perfectly smooth.
+fn gradient(x: f32, y: f32, w: f32, h: f32, top: f32, bottom: f32) {
+    let col = |a: f32| theme::rgba(0.10, 0.06, 0.04, a);
+    let vertices = vec![
+        Vertex::new(x, y, 0.0, 0.0, 0.0, col(top)),
+        Vertex::new(x + w, y, 0.0, 0.0, 0.0, col(top)),
+        Vertex::new(x + w, y + h, 0.0, 0.0, 0.0, col(bottom)),
+        Vertex::new(x, y + h, 0.0, 0.0, 0.0, col(bottom)),
+    ];
+    let indices = vec![0, 1, 2, 0, 2, 3];
+    draw_mesh(&Mesh { vertices, indices, texture: None });
 }
 
 /// A short line about the game in memory, for under the Continue button.
@@ -40,6 +54,27 @@ fn save_summary(g: &Game) -> String {
         s.push_str(" · peaceful");
     }
     s
+}
+
+/// The logo's drop-in geometry: `(top, width, height)`, used for both drawing
+/// and testing the title card's fit on small windows.
+fn logo_layout(w: f32, h: f32, t: f32) -> (f32, f32, f32) {
+    let lw = (w * 0.5).clamp(320.0, 640.0);
+    let lh = lw * 208.0 / 640.0;
+    let ly = (h * 0.1).max(space::L) - (1.0 - t) * 30.0;
+    (ly, lw, lh)
+}
+
+/// The main-menu card height: four buttons, plus the save summary row when a
+/// game exists to continue.
+fn main_card_h(has_game: bool) -> f32 {
+    let rows = 4.0;
+    space::L * 2.0 + rows * (BTN_H + space::S + 2.0) + if has_game { 22.0 } else { 0.0 }
+}
+
+/// The pause card's top edge, so the card stays on screen at small heights.
+fn pause_top(h: f32) -> f32 {
+    (h * 0.22).max(space::L)
 }
 
 /// Stacks full-width buttons down a card, returning each one's rect.
@@ -64,9 +99,7 @@ pub(super) fn title(g: &mut Game, page: MenuPage) {
     let t = ease_out(g.menu_fade);
 
     // Logo, dropping in as the menu opens.
-    let lw = (w * 0.5).clamp(320.0, 640.0);
-    let lh = lw * 208.0 / 640.0;
-    let ly = (h * 0.1).max(space::L) - (1.0 - t) * 30.0;
+    let (ly, lw, lh) = logo_layout(w, h, t);
     a.draw("logo", vec2((w - lw) / 2.0, ly), vec2(lw, lh), Default::default());
     let tagline = "A cozy automation game: mine, build, research, and wake the Grand Engine";
     let tw = text_w(&a, tagline, TextSize::S);
@@ -90,9 +123,7 @@ pub(super) fn title(g: &mut Game, page: MenuPage) {
 fn title_main(g: &mut Game, top: f32) {
     let a = g.assets.clone();
     let has_game = g.has_game;
-    let rows = 4.0;
-    let card_h = space::L * 2.0 + rows * (BTN_H + space::S + 2.0) + if has_game { 22.0 } else { 0.0 };
-    let r = Rect::new((ui_width() - CARD_W) / 2.0, top, CARD_W, card_h);
+    let r = Rect::new((ui_width() - CARD_W) / 2.0, top, CARD_W, main_card_h(has_game));
     surface(r, Elevation::Panel);
     g.ui_rects.push(r);
     let mut s = Stack { x: r.x + space::XL, y: r.y + space::L + 4.0, w: r.w - 2.0 * space::XL };
@@ -144,7 +175,7 @@ fn new_game_page(g: &mut Game, top: f32) {
     text(&a, "No attacks: just build (toggle any time with P)", peaceful.x + space::L, peaceful.y + 31.0, TextSize::Xs, TEXT_DIM);
     s.y += space::XS;
     let note = if g.has_game {
-        "Your save files stay until you save over them."
+        "Your last autosave is kept as a backup."
     } else {
         "A fresh meadow, a few tools and a long way to go."
     };
@@ -162,19 +193,25 @@ fn new_game_page(g: &mut Game, top: f32) {
 /// Close and Esc go.
 fn settings_page(g: &mut Game, top: f32, back: Screen) {
     let a = g.assets.clone();
-    let r = Rect::new((ui_width() - 460.0) / 2.0, top, 460.0, 300.0);
+    let r = Rect::new((ui_width() - 460.0) / 2.0, top, 460.0, 360.0);
     let (content, closed) = Panel::new(r).title("Settings").closable().show(g);
     let mut y = content.y;
     let mut s = g.settings;
-    for (label, v) in [("Music", &mut s.music), ("Ambience", &mut s.ambience), ("Sound effects", &mut s.sfx)] {
+    for (id, (label, v)) in [("Music", &mut s.music), ("Ambience", &mut s.ambience), ("Sound effects", &mut s.sfx)].into_iter().enumerate() {
         text(&a, label, content.x, y + 4.0, TextSize::M, TEXT);
         let pct = format!("{:.0}%", *v * 100.0);
         let pw = text_w(&a, &pct, TextSize::S);
         text(&a, &pct, content.right() - pw, y + 6.0, TextSize::S, KEY);
         let track = Rect::new(content.x + 140.0, y + 10.0, content.w - 140.0 - 56.0, 10.0);
-        slider(g, track, v);
+        slider(g, track, v, id);
         y += 44.0;
     }
+    let look_r = Rect::new(content.x, y + 4.0, content.w, 40.0);
+    let look_label = format!("Look: {}", s.look.name());
+    if button(&a, look_r, &look_label, true, &mut g.clickables) {
+        s.look = s.look.next();
+    }
+    y += 56.0;
     let fs = Rect::new(content.x, y + 4.0, content.w, 40.0);
     let label = if s.fullscreen { "Fullscreen: on" } else { "Fullscreen: off" };
     if button(&a, fs, label, true, &mut g.clickables) {
@@ -182,7 +219,7 @@ fn settings_page(g: &mut Game, top: f32, back: Screen) {
         set_fullscreen(s.fullscreen);
     }
     y += 56.0;
-    text(&a, "M mutes the music at any time", content.x, y, TextSize::S, TEXT_DIM);
+    text(&a, "M turns the music on or off while playing", content.x, y, TextSize::S, TEXT_DIM);
     if s != g.settings {
         g.apply_settings(s);
     }
@@ -195,18 +232,27 @@ fn settings_page(g: &mut Game, top: f32, back: Screen) {
 }
 
 /// A horizontal slider for a 0..=1 value: drag or click anywhere on its track.
-fn slider(g: &mut Game, track: Rect, v: &mut f32) {
+/// The press is captured so a drag keeps following the cursor until release,
+/// even when it leaves the track.
+fn slider(g: &mut Game, track: Rect, v: &mut f32, id: usize) {
     let hit = Rect::new(track.x - 8.0, track.y - 12.0, track.w + 16.0, track.h + 24.0);
     g.clickables.push(hit);
-    if is_mouse_button_down(MouseButton::Left) && hovered(hit) {
-        *v = ((ui_mouse().x - track.x) / track.w).clamp(0.0, 1.0);
+    if is_mouse_button_pressed(MouseButton::Left) && hovered(hit) {
+        g.slider_capture = Some(id);
+    }
+    if g.slider_capture == Some(id) {
+        if is_mouse_button_down(MouseButton::Left) {
+            *v = ((ui_mouse().x - track.x) / track.w).clamp(0.0, 1.0);
+        } else {
+            g.slider_capture = None;
+        }
     }
     rrect(track, track.h / 2.0, SLOT_WELL);
     let fill = Rect::new(track.x, track.y, (track.w * *v).max(track.h), track.h);
     rrect(fill, track.h / 2.0, theme::color(theme::LACQUER_500));
     rrect_lines(track, track.h / 2.0, line::HAIR, EDGE);
     let knob = vec2(track.x + track.w * *v, track.y + track.h / 2.0);
-    let kr = if hovered(hit) { 10.0 } else { 9.0 };
+    let kr = if g.slider_capture == Some(id) || hovered(hit) { 10.0 } else { 9.0 };
     draw_circle(knob.x, knob.y + 1.5, kr, theme::alpha(theme::SHADE, 0.35));
     draw_circle(knob.x, knob.y, kr, theme::color(theme::BG));
     draw_circle_lines(knob.x, knob.y, kr, line::BASE, EDGE);
@@ -215,12 +261,16 @@ fn slider(g: &mut Game, track: Rect, v: &mut f32) {
 pub(super) fn pause(g: &mut Game, page: MenuPage) {
     let a = g.assets.clone();
     veil(0.8);
-    let top = (ui_height() * 0.22).max(space::L);
+    // Ignore the Esc that opened the menu this same frame: macroquad clears
+    // pressed keys only at end of frame, so it would otherwise close at once.
+    let just_opened = g.menu_just_opened;
+    g.menu_just_opened = false;
+    let top = pause_top(ui_height());
     if page == MenuPage::Settings {
         settings_page(g, top, Screen::Paused(MenuPage::Main));
         return;
     }
-    let r = Rect::new((ui_width() - CARD_W) / 2.0, top, CARD_W, 400.0);
+    let r = Rect::new((ui_width() - CARD_W) / 2.0, top, CARD_W, PAUSE_H);
     let (content, closed) = Panel::new(r).title("Paused").closable().show(g);
     let mut s = Stack { x: content.x, y: content.y, w: content.w };
     let resume = primary_button(&a, s.next(BTN_H), "Resume", true, &mut g.clickables);
@@ -232,16 +282,42 @@ pub(super) fn pause(g: &mut Game, page: MenuPage) {
     let hw = text_w(&a, hint, TextSize::Xs);
     text(&a, hint, r.x + (r.w - hw) / 2.0, s.y + 2.0, TextSize::Xs, TEXT_DIM);
 
-    if resume || closed || is_key_pressed(KeyCode::Escape) {
+    if is_key_pressed(KeyCode::F5) {
+        g.save_game();
+    }
+    let esc = is_key_pressed(KeyCode::Escape) && !just_opened;
+    if resume || closed || esc {
         g.resume();
     } else if save {
         g.save_game();
     } else if settings {
         g.screen = Screen::Paused(MenuPage::Settings);
     } else if menu {
-        g.to_title();
-    } else if quit {
-        g.save_game();
+        g.go_to_title();
+    } else if quit && g.save_game() {
         g.quit = true;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The title and pause cards must fit on a small window: a 1000×620
+    /// physical window at the 0.8 UI scale is 1250×775 in logical space.
+    #[test]
+    fn cards_fit_in_a_small_window() {
+        let (w, h) = (1250.0, 775.0);
+        let (ly, _, lh) = logo_layout(w, h, 1.0);
+        let top = ly + lh + space::XL + space::L;
+        assert!(
+            top + main_card_h(true) <= h - space::L,
+            "title card runs off: top {top}, height {}",
+            main_card_h(true)
+        );
+        assert!(
+            pause_top(h) + PAUSE_H <= h - space::L,
+            "pause card runs off"
+        );
     }
 }

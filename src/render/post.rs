@@ -1,40 +1,45 @@
 //! Screen-space post-processing: the last pass that turns the lit world into
-//! a painted frame. Soft bloom and gentle ink give it a hand-painted
-//! storybook feel; ink outlines, halftone shading and slightly misregistered
-//! colour plates give it a printed-comic one; camera motion blur ties it
-//! together. There is deliberately no grain or paper noise: the image stays
-//! clean. `Look` picks how strongly each effect applies.
+//! a painted frame in the spirit of hand-painted animated films. Lush but soft
+//! colour, cool airy shadows by day and warm ones at golden hour, a gentle
+//! halation around bright things, slanting sun shafts, drifting cloud shadows
+//! and a light aerial haze toward the top of the screen; plus camera motion
+//! blur. There is deliberately no grain or paper noise: the image stays clean.
+//! `Look` picks the preset.
+//!
+//! Cost is kept low: the bloom is thresholded and blurred at quarter
+//! resolution (so the full-screen pass reads it with one tap), motion blur only
+//! takes extra taps while the camera moves, and the Clean look skips the post
+//! pass and both bloom passes entirely.
 
 use macroquad::prelude::*;
+use serde::{Deserialize, Serialize};
 
 /// A preset for the post-processing pass, cycled with the V key.
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
 pub enum Look {
-    /// Painted picture-book: soft bloom and gentle ink.
+    /// Painted storybook: soft bloom, lush colour, sun shafts, cloud shadows.
     #[default]
     Storybook,
-    /// Printed comic: bold ink lines, halftone shadows, offset colour plates.
-    Comic,
-    /// No post effects at all.
+    /// No post effects at all (and no post cost).
     Clean,
 }
 
 /// How strongly each effect applies, 0..1.
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct LookParams {
-    pub ink: f32,
-    pub halftone: f32,
-    /// Colour-plate misregistration (red and blue nudged apart).
-    pub chroma: f32,
     pub bloom: f32,
-    /// Flattens colours toward a few printed tones.
-    pub posterize: f32,
+    /// Lifts the saturation of muted colours (greens, sky), leaving vivid ones.
+    pub vibrance: f32,
+    /// Soft drifting cloud shadows over the land by day.
+    pub clouds: f32,
     /// Camera motion blur, as a fraction of a frame's travel.
     pub motion: f32,
+    /// Colour grade, sun shafts and aerial haze (scaled by the time of day).
+    pub mood: f32,
 }
 
 impl Look {
-    pub const ALL: [Look; 3] = [Look::Storybook, Look::Comic, Look::Clean];
+    pub const ALL: [Look; 2] = [Look::Storybook, Look::Clean];
 
     pub fn next(self) -> Look {
         let i = Self::ALL.iter().position(|&l| l == self).unwrap_or(0);
@@ -44,7 +49,6 @@ impl Look {
     pub fn name(self) -> &'static str {
         match self {
             Look::Storybook => "Storybook",
-            Look::Comic => "Comic",
             Look::Clean => "Clean",
         }
     }
@@ -56,31 +60,15 @@ impl Look {
 
     pub fn params(self) -> LookParams {
         match self {
-            Look::Storybook => LookParams {
-                ink: 0.45,
-                halftone: 0.15,
-                chroma: 0.25,
-                bloom: 0.6,
-                posterize: 0.0,
-                motion: 1.0,
-            },
-            Look::Comic => LookParams {
-                ink: 1.0,
-                halftone: 0.9,
-                chroma: 1.0,
-                bloom: 0.4,
-                posterize: 0.3,
-                motion: 1.0,
-            },
-            Look::Clean => LookParams {
-                ink: 0.0,
-                halftone: 0.0,
-                chroma: 0.0,
-                bloom: 0.0,
-                posterize: 0.0,
-                motion: 0.0,
-            },
+            Look::Storybook => LookParams { bloom: 0.7, vibrance: 1.0, clouds: 1.0, motion: 1.0, mood: 1.0 },
+            Look::Clean => LookParams { bloom: 0.0, vibrance: 0.0, clouds: 0.0, motion: 0.0, mood: 0.0 },
         }
+    }
+
+    /// Whether this look needs the post pass at all.
+    pub fn has_post(self) -> bool {
+        let p = self.params();
+        p.bloom + p.vibrance + p.clouds + p.motion + p.mood > 0.0
     }
 }
 
@@ -118,19 +106,18 @@ mod tests {
     }
 
     #[test]
-    fn clean_look_turns_everything_off() {
+    fn clean_look_turns_everything_off_and_skips_the_pass() {
         let p = Look::Clean.params();
-        assert_eq!(
-            [p.ink, p.halftone, p.chroma, p.bloom, p.posterize, p.motion],
-            [0.0; 6]
-        );
+        assert_eq!([p.bloom, p.vibrance, p.clouds, p.motion, p.mood], [0.0; 5]);
+        assert!(!Look::Clean.has_post());
+        assert!(Look::Storybook.has_post());
     }
 
     #[test]
     fn looks_parse_by_name() {
-        assert_eq!(Look::parse("comic"), Some(Look::Comic));
+        assert_eq!(Look::parse("clean"), Some(Look::Clean));
         assert_eq!(Look::parse(" Storybook "), Some(Look::Storybook));
-        assert_eq!(Look::parse("vhs"), None);
+        assert_eq!(Look::parse("comic"), None);
     }
 
     #[test]

@@ -52,6 +52,18 @@ pub(super) fn text_w(a: &Assets, t: &str, size: TextSize) -> f32 {
     measure_text(t, Some(font_for(a, size)), font_size, font_scale).width
 }
 
+/// Full line height for a text size, from the same reference glyphs `text`
+/// uses, so vertical centring agrees with the drawn text.
+pub(super) fn text_h(a: &Assets, size: TextSize) -> f32 {
+    line_metrics(a, size).height
+}
+
+/// The baseline offset for a text size, so two lines of different sizes can
+/// share one baseline.
+pub(super) fn text_baseline(a: &Assets, size: TextSize) -> f32 {
+    line_metrics(a, size).offset_y
+}
+
 /// Text centred in `r`, using the string's width and the fixed line height so
 /// vertical centring doesn't shift for strings without ascenders or descenders.
 pub(super) fn text_in(a: &Assets, t: &str, r: Rect, size: TextSize, col: Color) {

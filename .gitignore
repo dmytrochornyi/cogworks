@@ -1,6 +1,7 @@
 /target
 cogworks_save.json
 cogworks_autosave.json
+cogworks_autosave.prev.json
 *.json.tmp
 .superpowers/
 /drive-download-*/
@@ -8,3 +9,5 @@ cogworks_autosave.json
 __pycache__/
 cogworks_test_save.json
 cogworks_settings.json
+cogworks_crash.log
+cogworks_crash_save.json

@@ -30,6 +30,9 @@ use world::{Kind, State, World};
 
 const TICK: f32 = 1.0 / 60.0;
 
+/// Where the panic hook appends crash reports.
+const CRASH_LOG: &str = "cogworks_crash.log";
+
 fn conf() -> Conf {
     let dim = |key: &str, default: i32| {
         std::env::var(key).ok().and_then(|v| v.parse().ok()).unwrap_or(default)
@@ -61,28 +64,66 @@ fn window_icon() -> macroquad::miniquad::conf::Icon {
     }
 }
 
+/// The normal startup path: the newest save under the title screen, or a fresh
+/// world when there is none yet. A failure to load becomes a toast rather than a
+/// panic, and any repairs the load made are reported too.
+fn startup_world(
+    seed: u64,
+    load_note: &mut Option<String>,
+    repair_note: &mut Option<String>,
+) -> (World, bool, Screen) {
+    match save::load_newest_or_fallback() {
+        Ok(Some(loaded)) => {
+            if let Some(failed) = loaded.failed {
+                *load_note = Some(format!("{failed} failed to load · loaded {} instead", loaded.slot));
+            }
+            *repair_note = save::repair_toast(&loaded.notes);
+            (loaded.world, true, Screen::Title(MenuPage::Main))
+        }
+        // No save yet: a fresh world with no toast.
+        Ok(None) => (World::new(seed), false, Screen::Title(MenuPage::Main)),
+        Err(e) => {
+            *load_note = Some(e);
+            (World::new(seed), false, Screen::Title(MenuPage::Main))
+        }
+    }
+}
+
 #[macroquad::main(conf)]
 async fn main() {
+    // Closing the window shouldn't silently lose up to 3 minutes of play: keep
+    // the app alive so `is_quit_requested` can autosave first.
+    prevent_quit();
     let seed = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_nanos() as u64)
         .unwrap_or(0x9E37_79B9);
     let screenshot_mode = std::env::var("COGWORKS_SCREENSHOT").is_ok();
+    // Log panics to a crash file so a crash doesn't die without a trace. Skipped
+    // in screenshot mode, where a crash is just a failed dev run.
+    if !screenshot_mode {
+        install_crash_hook();
+    }
     // `cogworks <save file>` drops straight into that save. Otherwise the title
     // screen opens over the newest save (so Continue resumes it), or over a
     // fresh world when there is none yet.
-    let mut load_error = None;
+    let mut load_note = None;
+    let mut repair_note = None;
     let (world, has_game, screen) = match std::env::args().nth(1) {
-        Some(path) => (save::load(&path).unwrap_or_else(|e| panic!("{e}")), true, Screen::Playing),
-        None if screenshot_mode => (World::new(seed), false, Screen::Playing),
-        None => match save::newest_save().map(save::load) {
-            Some(Ok(w)) => (w, true, Screen::Title(MenuPage::Main)),
-            Some(Err(e)) => {
-                load_error = Some(e);
-                (World::new(seed), false, Screen::Title(MenuPage::Main))
+        Some(path) => match save::load(&path) {
+            Ok((world, notes)) => {
+                repair_note = save::repair_toast(&notes);
+                (world, true, Screen::Playing)
             }
-            None => (World::new(seed), false, Screen::Title(MenuPage::Main)),
+            // A save named on the command line that won't load falls back to the
+            // normal startup path instead of panicking.
+            Err(e) => {
+                load_note = Some(e);
+                startup_world(seed, &mut load_note, &mut repair_note)
+            }
         },
+        None if screenshot_mode => (World::new(seed), false, Screen::Playing),
+        None => startup_world(seed, &mut load_note, &mut repair_note),
     };
     let assets = Rc::new(Assets::load().await);
     let audio = audio::Audio::load().await;
@@ -91,7 +132,10 @@ async fn main() {
     game.screen = screen;
     // A loaded game doesn't need the welcome note again.
     game.show_help = !has_game;
-    if let Some(e) = load_error {
+    if let Some(e) = load_note {
+        game.toast(e);
+    }
+    if let Some(e) = repair_note {
         game.toast(e);
     }
     // Dev aid: open a menu in screenshot mode.
@@ -117,6 +161,7 @@ async fn main() {
         game.panel = match std::env::var("COGWORKS_PANEL").as_deref() {
             Ok("research") => Panel::Research,
             Ok("inventory") => Panel::Inventory,
+            Ok("map") => Panel::Map,
             Ok("building") => {
                 let crafters = || {
                     game.world
@@ -154,7 +199,11 @@ async fn main() {
         if game.screen == Screen::Playing && !game.paused {
             acc += dt;
             while acc >= TICK {
-                game.world.update(TICK);
+                if screenshot_mode {
+                    game.world.update(TICK);
+                } else {
+                    tick_or_crash_save(&mut game.world);
+                }
                 acc -= TICK;
             }
         }
@@ -172,9 +221,79 @@ async fn main() {
             get_screen_data().export_png(path);
             break;
         }
+        if is_quit_requested() {
+            // Closing the window: autosave so nothing is lost, then save the
+            // settings and exit. The title screen is skipped because the world
+            // was already saved on the way there. A toast would never be seen
+            // now, so report problems on stderr instead.
+            if game.has_game
+                && !matches!(game.screen, Screen::Title(_))
+                && game.world.player.alive()
+                && !screenshot_mode
+                && let Err(e) = save::save(&mut game.world, save::AUTOSAVE_PATH)
+            {
+                eprintln!("{e}");
+            }
+            if !screenshot_mode
+                && let Err(e) = game.settings.save()
+            {
+                eprintln!("{e}");
+            }
+            break;
+        }
         if game.quit {
+            // Quit (or "Save and quit") from a menu: persist settings too,
+            // but never in screenshot mode, and report on stderr since no
+            // toast would be seen before exit.
+            if !screenshot_mode
+                && let Err(e) = game.settings.save()
+            {
+                eprintln!("{e}");
+            }
             break;
         }
         next_frame().await;
+    }
+}
+
+/// Installs a panic hook that appends a crash report to `cogworks_crash.log`
+/// before falling back to the default handler. The hook itself must never
+/// panic: any write failure is ignored.
+fn install_crash_hook() {
+    let previous = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        let _ = record_crash(info);
+        previous(info);
+    }));
+}
+
+/// Appends a timestamp, the panic message, its location and a backtrace to the
+/// crash log. Returns `Err` (ignored by the hook) if the log can't be written.
+fn record_crash(info: &std::panic::PanicHookInfo<'_>) -> std::io::Result<()> {
+    use std::io::Write;
+    let mut log = std::fs::OpenOptions::new().create(true).append(true).open(CRASH_LOG)?;
+    let secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let location = info
+        .location()
+        .map(|l| l.to_string())
+        .unwrap_or_else(|| "unknown location".to_string());
+    writeln!(log, "{secs} {location}: {info}")?;
+    writeln!(log, "{}", std::backtrace::Backtrace::force_capture())?;
+    Ok(())
+}
+
+/// Runs one fixed tick; if it panics, writes an emergency save to the crash slot
+/// (never one of the normal slots, so a broken state can't overwrite a good
+/// save) and re-raises the panic so the crash log and default hook still run.
+fn tick_or_crash_save(world: &mut World) {
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| world.update(TICK))) {
+        Ok(()) => {}
+        Err(payload) => {
+            let _ = save::save(world, save::CRASH_SAVE_PATH);
+            std::panic::resume_unwind(payload);
+        }
     }
 }

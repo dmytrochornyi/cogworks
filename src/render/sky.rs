@@ -15,6 +15,13 @@ pub struct Sky {
     /// Mood tint for the composite grade: rgb is the tint colour, `a` the
     /// strength. Keeps grass from going olive/teal under the ambient multiply.
     pub tint: Color,
+    /// Strength of the sun shafts slanting across the map: strongest at
+    /// golden hour, gentle by day, none at night.
+    pub sun: f32,
+    /// Where the sun sits, -1 (left, morning) to 1 (right, evening).
+    pub sun_x: f32,
+    /// How strongly the cinematic grade warms highlights and browns shadows.
+    pub warmth: f32,
     pub label: &'static str,
 }
 
@@ -115,7 +122,33 @@ pub fn sky_at_phase(p: f32) -> Sky {
         (1.00, [0.66, 0.42, 0.92, 0.75]), // night
     ];
     let t = lerp_keys4(&TINT, p);
+    const SUN: [(f32, f32); 10] = [
+        (0.00, 0.0),
+        (0.24, 0.0),
+        (0.28, 0.45),
+        (0.36, 0.45),
+        (0.50, 0.25),
+        (0.62, 1.0),
+        (0.70, 0.85),
+        (0.78, 0.15),
+        (0.84, 0.0),
+        (1.00, 0.0),
+    ];
+    const WARMTH: [(f32, f32); 9] = [
+        (0.00, 0.15),
+        (0.22, 0.15),
+        (0.30, 0.45),
+        (0.50, 0.2),
+        (0.62, 1.0),
+        (0.72, 0.9),
+        (0.82, 0.35),
+        (0.88, 0.15),
+        (1.00, 0.15),
+    ];
     Sky {
+        sun: lerp_keys(&SUN, p),
+        sun_x: ((p - 0.5) * 4.0).clamp(-1.0, 1.0),
+        warmth: lerp_keys(&WARMTH, p),
         ambient: theme::rgba(c[0], c[1], c[2], 1.0),
         night: lerp_keys(&NIGHT, p),
         glow: lerp_keys(&GLOW, p),
